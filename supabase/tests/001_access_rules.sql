@@ -166,7 +166,8 @@ begin
   set local role authenticated;
   select (select count(*) from public.conversations) + (select count(*) from public.messages)
        + (select count(*) from public.partners) + (select count(*) from public.companies)
-       + (select count(*) from public.documents) into n;
+       + (select count(*) from public.documents) + (select count(*) from public.notifications)
+       + (select count(*) from public.comments) into n;
   ok := n = 0; failures := failures + (not ok)::int;
   report := report || format(E'%s user without memberships sees nothing (expect 0, got %s)\n', case when ok then 'PASS' else 'FAIL' end, n);
   reset role;

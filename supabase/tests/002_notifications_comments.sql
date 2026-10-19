@@ -67,7 +67,10 @@ begin
   reset role;
   select count(*) into n from public.notifications where conversation_id = conv and recipient_id in (u_s2, u_s3);
   ok := n = 2; failures := failures + (not ok)::int;
-  report := report || format(E'%s later messages go only to participating staff (staff 2+3 stay at 2, got %s)\n', case when ok then 'PASS' else 'FAIL' end, n);
+  report := report || format(E'%s other staff are not notified once a colleague handles the thread (stay at 2, got %s)\n', case when ok then 'PASS' else 'FAIL' end, n);
+  select count(*) into n from public.notifications where conversation_id = conv and recipient_id = u_s1;
+  ok := n = 2; failures := failures + (not ok)::int;
+  report := report || format(E'%s the participating staff member is notified (expect 2, got %s)\n', case when ok then 'PASS' else 'FAIL' end, n);
 
   -- Internal note: referrer is never notified.
   perform set_config('request.jwt.claims', json_build_object('sub', u_s1, 'role', 'authenticated')::text, true);
