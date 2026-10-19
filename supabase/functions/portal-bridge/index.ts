@@ -16,9 +16,8 @@
 //           body:  { "email": "...", "action": "...", ...params }
 // Response: { ok: true, data } or { ok: false, error }
 //
-// KNOWN ISSUES (found 2026-10-19 when copied from production, not fixed yet):
-// - resolveUser reads public.partners.archived, which does not exist in the schema.
-// - The handler maps Postgres error P0429 (send limit), but no rate-limit trigger exists.
+// 2026-10-19: the schema now has what this code expects (partners.archived and the
+// P0429 send limit, migration 20261019190000). Code unchanged from the deployed v2.
 
 import postgres from "npm:postgres@3.4.5";
 import { createClient } from "npm:@supabase/supabase-js@2.50.0";
