@@ -18,6 +18,10 @@
 //
 // 2026-10-19: the schema now has what this code expects (partners.archived and the
 // P0429 send limit, migration 20261019190000). Code unchanged from the deployed v2.
+// 2026-10-20 (v3): staff follow the Gestionale's Ruoli table. Every staff-secret call carries
+// zite_user_id, staff_role ('admin' | 'manager') and optional names; the bridge creates or updates the
+// staff profile to match (migration 20261020190000). New action staff_leave (admin only).
+// The portal refuses former_staff as well as staff.
 
 import postgres from "npm:postgres@3.4.5";
 import { createClient } from "npm:@supabase/supabase-js@2.50.0";
@@ -80,15 +84,61 @@ const optText = (v: unknown, name: string, max: number) => (v == null || v === "
 // Identity: find (or, for known referrers, create) the Supabase user for an email.
 // Runs with full privileges; nothing here is influenced by the browser.
 // ---------------------------------------------------------------------------
-async function resolveUser(email: string, audience: Audience): Promise<{ id: string; role: string }> {
+// What the Gestionale says about the person (2026-10-20: staff follow the Zite "Ruoli" table). Only the
+// staff secret can send it, and the Gestionale refuses anyone without a Ruoli row before calling, so it is
+// the Gestionale's server, not a browser, that vouches for "this person is in the team, with this role".
+type StaffInfo = { ziteUserId: string; staffRole: "admin" | "manager"; nameFirst: string | null; nameLast: string | null };
+function staffInfo(p: Record<string, unknown>): StaffInfo {
+  const ziteUserId = text(p.zite_user_id, "zite_user_id", 100);
+  const staffRole = p.staff_role;
+  if (staffRole !== "admin" && staffRole !== "manager") throw new BridgeError(400, "invalid_staff_role");
+  return { ziteUserId, staffRole, nameFirst: optText(p.name_first, "name_first", 100), nameLast: optText(p.name_last, "name_last", 100) };
+}
+
+// Creates, updates or brings back the staff profile for this email so it matches Ruoli.
+async function resolveStaff(email: string, info: StaffInfo): Promise<{ id: string; role: string }> {
+  const [profile] = await sql`select id, role, zite_user_id from public.profiles where lower(email) = ${email}`;
+  const [owner] = await sql`select id from public.profiles where zite_user_id = ${info.ziteUserId}`;
+  if (owner && owner.id !== profile?.id) {
+    // The Zite user's email changed, or two Zite users share a profile: needs a person to look at it.
+    console.error("zite_user_id already on another profile", info.ziteUserId);
+    throw new BridgeError(409, "zite_user_conflict");
+  }
+  if (profile && profile.role !== "staff" && profile.role !== "former_staff") {
+    // The address belongs to a referrer or a client: never turn it into staff.
+    throw new BridgeError(403, "email_not_staff");
+  }
+  let id: string = profile?.id;
+  if (!id) {
+    const { data, error } = await admin.auth.admin.createUser({ email, email_confirm: true });
+    if (error || !data?.user) {
+      console.error("createUser (staff) failed", error?.message);
+      throw new BridgeError(500, "account_creation_failed");
+    }
+    id = data.user.id;
+  }
+  // organization_id is filled by the profiles_set_staff_organization trigger.
+  await sql`update public.profiles
+               set role = 'staff', staff_role = ${info.staffRole}, zite_user_id = ${info.ziteUserId},
+                   name_first = coalesce(${info.nameFirst}, name_first), name_last = coalesce(${info.nameLast}, name_last)
+             where id = ${id}
+               and (role is distinct from 'staff' or staff_role is distinct from ${info.staffRole}::public.staff_role
+                    or zite_user_id is distinct from ${info.ziteUserId}
+                    or (${info.nameFirst}::text is not null and name_first is distinct from ${info.nameFirst})
+                    or (${info.nameLast}::text is not null and name_last is distinct from ${info.nameLast}))`;
+  return { id, role: "staff" };
+}
+
+async function resolveUser(email: string, audience: Audience, payload: Record<string, unknown>): Promise<{ id: string; role: string }> {
+  if (audience === "staff") return resolveStaff(email, staffInfo(payload));
+
   const [profile] = await sql`select id, role from public.profiles where lower(email) = ${email}`;
   // Active referrer whose Zite email matches (archived ones don't count).
   const [partner] = await sql`select id from public.partners where lower(email) = ${email} and not archived`;
 
   if (profile) {
-    // Each app only acts for its own audience.
-    if (audience === "staff" && profile.role !== "staff") throw new BridgeError(403, "staff_only");
-    if (audience === "portal" && profile.role === "staff") throw new BridgeError(403, "staff_use_gestionale");
+    // The portal never acts for Gemina's team, past or present.
+    if (profile.role === "staff" || profile.role === "former_staff") throw new BridgeError(403, "staff_use_gestionale");
 
     if (profile.role === "partner") {
       // Membership follows the email on the referrer record: if the email changed
@@ -104,8 +154,8 @@ async function resolveUser(email: string, audience: Audience): Promise<{ id: str
   }
 
   // Only active referrers known in Zite get an account automatically, and only
-  // through the portal. Staff are promoted by an admin; clients come later.
-  if (audience !== "portal" || !partner) throw new BridgeError(403, "unknown_user");
+  // through the portal. Staff come from the Gestionale (resolveStaff); clients come later.
+  if (!partner) throw new BridgeError(403, "unknown_user");
 
   const { data, error } = await admin.auth.admin.createUser({ email, email_confirm: true });
   if (error || !data?.user) {
@@ -126,6 +176,23 @@ async function asUser<T>(userId: string, fn: (tx: postgres.TransactionSql) => Pr
     await tx.unsafe("set local role authenticated");
     return await fn(tx);
   }) as T;
+}
+
+// Someone left the Gemina team (set to "Nessuno" in the Gestionale's Accesso al Gestionale card, which only an
+// administrator can do). Staff secret only; the caller must be an admin. Their profile becomes former_staff: no
+// access from now on (rules test role = 'staff'), name kept on old messages. Their current token (at most about
+// 1 hour) cannot be renewed: the Gestionale refuses them and the bridge only makes staff from the Gestionale.
+async function staffLeave(audience: Audience, callerId: string, p: Record<string, unknown>) {
+  if (audience !== "staff") throw new BridgeError(403, "staff_only");
+  const target = text(p.target_zite_user_id, "target_zite_user_id", 100);
+  const [caller] = await sql`select staff_role, zite_user_id from public.profiles where id = ${callerId}`;
+  if (caller?.staff_role !== "admin") throw new BridgeError(403, "admin_only");
+  if (caller.zite_user_id === target) throw new BridgeError(400, "cannot_remove_self");
+  const rows = await sql`update public.profiles
+                            set role = 'former_staff', staff_role = null, organization_id = null
+                          where zite_user_id = ${target} and role = 'staff'
+                          returning id`;
+  return { removed: rows.length };
 }
 
 // ---------------------------------------------------------------------------
@@ -320,10 +387,11 @@ Deno.serve(async (req) => {
     const email = String(payload.email ?? "").trim().toLowerCase();
     if (!EMAIL.test(email)) throw new BridgeError(400, "invalid_email");
     const action = String(payload.action ?? "");
-    if (action !== "session" && !Object.hasOwn(actions, action)) throw new BridgeError(400, "unknown_action");
+    if (action !== "session" && action !== "staff_leave" && !Object.hasOwn(actions, action)) throw new BridgeError(400, "unknown_action");
 
-    const user = await resolveUser(email, audience);
+    const user = await resolveUser(email, audience, payload);
     if (action === "session") return reply(200, { ok: true, data: await createSession(email) });
+    if (action === "staff_leave") return reply(200, { ok: true, data: await staffLeave(audience, user.id, payload) });
     const data = await asUser(user.id, (tx) => actions[action](tx, user.id, payload));
     return reply(200, { ok: true, data });
   } catch (e) {

@@ -5,8 +5,14 @@ Plan: `piano-database-supabase.md` (v0.3) and the review `claude/2026-10-19-veri
 ## Projects
 | | Project | Ref | Region | Who touches it |
 |---|---|---|---|---|
-| Dev | Gemina dev (org "Gemina Dev") | tzbssapqpdtjljtphsiy | eu-west-1 | Claude, fake data only |
-| Production | Gestionale Gemina Advisory EU (org "Gemina Advisory") | gsnmtfugfhhrutmlvhzt | eu-central-1 | Giacomo deploys; Claude not connected |
+| Dev | Gestionale Gemina Advisory EU (org "Gemina Advisory dev", free plan) | gsnmtfugfhhrutmlvhzt | eu-central-1 | Claude; test data only (real aziende names, referrer emails replaced) |
+| Production | not created yet (Pro, Frankfurt) | — | eu-central-1 | Giacomo creates it from these files; no chat connected |
+
+(Until 2026-10-19 this table listed gsnmtfugfhhrutmlvhzt as production and an older tzbssapqpdtjljtphsiy as dev. gsnmtfugfhhrutmlvhzt became dev that evening; production will be a new, clean project.)
+
+## Words
+- **staff** = Gemina's team, mirrors the Zite table Ruoli (Amministratore → `admin`, Manager → `manager`). `former_staff` = left the team: no access, profile kept for history.
+- **partner** = a segnalatore (referrer). In the Gestionale's screens Gemina's own people are called *Manager*.
 
 ## Rules
 1. Every change is a file in `migrations/`, applied to dev first, tested, then to production. Never edit production by hand.
@@ -22,5 +28,6 @@ It is the structure of production on 2026-10-19, read from its catalog (producti
 
 ## Settings that are not SQL (set once per project)
 - Auth: sign-ups disabled; site URL and redirect URLs; leaked-password protection or password sign-in off.
-- Edge Function `portal-bridge` deployed, with secrets `BRIDGE_SECRET_STAFF` and `BRIDGE_SECRET_PORTAL` (different values).
+- Edge Function `portal-bridge` deployed (verify_jwt off: it checks its own secrets), with secrets `BRIDGE_SECRET_STAFF` and `BRIDGE_SECRET_PORTAL` (different values).
+- Staff accounts are not created by hand: the bridge makes them from the Gestionale's Ruoli (see migration 20261020190000).
 - Later: token hook, MFA, Resend key.
