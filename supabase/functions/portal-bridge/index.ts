@@ -1,4 +1,4 @@
-// portal-bridge (v3)
+// portal-bridge (v4)
 // Lets Zite endpoints use Supabase on behalf of the person logged in to Zite.
 //
 // Trust model:
@@ -22,6 +22,8 @@
 // zite_user_id, staff_role ('admin' | 'manager') and optional names; the bridge creates or updates the
 // staff profile to match (migration 20261020183659). New action staff_leave (admin only).
 // The portal refuses former_staff as well as staff.
+// 2026-10-20 (v4): action notify (either secret): a Zite bell event for one current staff member
+// (migration 20261020210000).
 
 import postgres from "npm:postgres@3.4.5";
 import { createClient } from "npm:@supabase/supabase-js@2.50.0";
@@ -205,6 +207,30 @@ async function staffLeave(audience: Audience, callerId: string, p: Record<string
                           where zite_user_id = ${target} and role = 'staff'
                           returning id`;
   return { removed: rows.length };
+}
+
+// A bell notification for one member of the team, sent by Zite's notifica() (both apps, so either secret).
+// Zite names the recipient by Zite user id; only a CURRENT staff profile is notified (nobody else, ever): a person
+// who has never opened the Gestionale since staff follow Ruoli has no profile yet and is skipped (Zite's own bell
+// still has it during the overlap). The text is Zite's bell text; event_key (the Zite row id) makes it arrive once.
+async function notify(p: Record<string, unknown>) {
+  const recipient = text(p.recipient_zite_user_id, "recipient_zite_user_id", 100);
+  const actor = optText(p.actor_zite_user_id, "actor_zite_user_id", 100);
+  const event = text(p.event, "event", 60);
+  const label = text(p.label, "label", 300);
+  const link = optText(p.link, "link", 200);
+  const eventKey = text(p.event_key, "event_key", 100);
+  const rows = await sql`
+    insert into public.notifications (organization_id, recipient_id, kind, actor_id, label, event, link, event_key)
+    select r.organization_id, r.id, 'event',
+           (select a.id from public.profiles a where a.zite_user_id = ${actor} and a.role = 'staff'),
+           ${label}, ${event}, ${link}, ${eventKey}
+      from public.profiles r
+     where r.zite_user_id = ${recipient} and r.role = 'staff' and r.id is distinct from
+           (select a.id from public.profiles a where a.zite_user_id = ${actor})
+    on conflict (event_key) where event_key is not null do nothing
+    returning id`;
+  return { created: rows.length };
 }
 
 // ---------------------------------------------------------------------------
@@ -396,6 +422,9 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // notify acts for nobody: it is a server-to-server message from Zite (see notify above).
+    if (payload.action === "notify") return reply(200, { ok: true, data: await notify(payload) });
+
     const email = String(payload.email ?? "").trim().toLowerCase();
     if (!EMAIL.test(email)) throw new BridgeError(400, "invalid_email");
     const action = String(payload.action ?? "");
