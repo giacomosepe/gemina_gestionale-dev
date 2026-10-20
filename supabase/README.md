@@ -29,5 +29,5 @@ It is the structure of production on 2026-10-19, read from its catalog (producti
 ## Settings that are not SQL (set once per project)
 - Auth: sign-ups disabled; site URL and redirect URLs; leaked-password protection or password sign-in off.
 - Edge Function `portal-bridge` deployed (verify_jwt off: it checks its own secrets), with secrets `BRIDGE_SECRET_STAFF` and `BRIDGE_SECRET_PORTAL` (different values).
-- Staff accounts are not created by hand: the bridge makes them from the Gestionale's Ruoli (see migration 20261020190000).
+- Staff accounts are not created by hand: the bridge makes them from the Gestionale's Ruoli (see migration 20261020183659).
 - Later: token hook, MFA, Resend key.

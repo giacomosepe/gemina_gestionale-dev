@@ -1,4 +1,4 @@
-// portal-bridge (v2)
+// portal-bridge (v3)
 // Lets Zite endpoints use Supabase on behalf of the person logged in to Zite.
 //
 // Trust model:
@@ -20,7 +20,7 @@
 // P0429 send limit, migration 20261019190000). Code unchanged from the deployed v2.
 // 2026-10-20 (v3): staff follow the Gestionale's Ruoli table. Every staff-secret call carries
 // zite_user_id, staff_role ('admin' | 'manager') and optional names; the bridge creates or updates the
-// staff profile to match (migration 20261020190000). New action staff_leave (admin only).
+// staff profile to match (migration 20261020183659). New action staff_leave (admin only).
 // The portal refuses former_staff as well as staff.
 
 import postgres from "npm:postgres@3.4.5";

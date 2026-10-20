@@ -1,4 +1,4 @@
--- Staff follow Ruoli (migration 20261020190000). Same pattern as 001/002: one DO block, everything
+-- Staff follow Ruoli (migration 20261020183659). Same pattern as 001/002: one DO block, everything
 -- rolled back by the final RAISE; the error message is the report.
 -- What the bridge does with the staff secret is mirrored here as plain updates (it runs with full rights).
 
