@@ -10,6 +10,7 @@ declare
   u_ref    uuid := gen_random_uuid();  -- referrer
   p_ref    uuid;
   conv     uuid;
+  c_old    uuid;
   n        int;
   report   text := '';
   failures int := 0;
@@ -56,6 +57,18 @@ begin
   exception when insufficient_privilege then ok := true; end;
   failures := failures + (not ok)::int;
   report := report || format(E'%s a browser cannot promote itself to admin\n', case when ok then 'PASS' else 'FAIL' end);
+  begin
+    insert into public.profiles (id, email) values (gen_random_uuid(), 'fake@example.test');
+    ok := false;
+  exception when insufficient_privilege then ok := true; end;
+  failures := failures + (not ok)::int;
+  report := report || format(E'%s a browser cannot create a profile\n', case when ok then 'PASS' else 'FAIL' end);
+  reset role;
+
+  -- a comment written while still in the team, by the person who will leave
+  perform set_config('request.jwt.claims', json_build_object('sub', u_old, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  insert into public.comments (record_type, record_zite_id, body) values ('pratica', 'zite-t3', 'written before leaving') returning id into c_old;
   reset role;
 
   -- leaving the team, as the bridge does in staffLeave
@@ -80,7 +93,20 @@ begin
   exception when others then ok := true; end;
   failures := failures + (not ok)::int;
   report := report || format(E'%s former staff cannot write messages\n', case when ok then 'PASS' else 'FAIL' end);
+  update public.comments set body = 'edited after leaving' where id = c_old;
+  get diagnostics n = row_count;
+  ok := n = 0; failures := failures + (not ok)::int;
+  report := report || format(E'%s former staff cannot edit their old comment (expect 0 rows, got %s)\n', case when ok then 'PASS' else 'FAIL' end, n);
   reset role;
+
+  -- a colleague replies to that old comment: the person who left is not notified
+  perform set_config('request.jwt.claims', json_build_object('sub', u_s1, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  insert into public.comments (record_type, record_zite_id, parent_id, body) values ('pratica', 'zite-t3', c_old, 'reply');
+  reset role;
+  select count(*) into n from public.notifications where recipient_id = u_old and kind = 'comment_reply';
+  ok := n = 0; failures := failures + (not ok)::int;
+  report := report || format(E'%s a reply does not notify former staff (expect 0, got %s)\n', case when ok then 'PASS' else 'FAIL' end, n);
 
   -- the referrer writes first: every CURRENT staff member is notified, the former one is not
   perform set_config('request.jwt.claims', json_build_object('sub', u_ref, 'role', 'authenticated')::text, true);

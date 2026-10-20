@@ -95,6 +95,26 @@ function staffInfo(p: Record<string, unknown>): StaffInfo {
   return { ziteUserId, staffRole, nameFirst: optText(p.name_first, "name_first", 100), nameLast: optText(p.name_last, "name_last", 100) };
 }
 
+// A new auth user gets a profile with role 'client' from the handle_new_user trigger; the bridge then sets the
+// real role. If that second step ever failed, the profile would stay a "client" with nothing attached. Such a
+// blank profile (role client, no company) may still become staff or partner, so nobody is locked out by a
+// half-finished first call. A real client always has a company membership.
+async function isBlankClient(profileId: string, role: string): Promise<boolean> {
+  if (role !== "client") return false;
+  const [m] = await sql`select 1 from public.company_members where profile_id = ${profileId} limit 1`;
+  return !m;
+}
+
+// Creates the auth user; if a parallel first call created it a moment ago, uses that one.
+async function createAuthUser(email: string): Promise<string> {
+  const { data, error } = await admin.auth.admin.createUser({ email, email_confirm: true });
+  if (data?.user) return data.user.id;
+  const [again] = await sql`select id from public.profiles where lower(email) = ${email}`;
+  if (again) return again.id;
+  console.error("createUser failed", error?.message);
+  throw new BridgeError(500, "account_creation_failed");
+}
+
 // Creates, updates or brings back the staff profile for this email so it matches Ruoli.
 async function resolveStaff(email: string, info: StaffInfo): Promise<{ id: string; role: string }> {
   const [profile] = await sql`select id, role, zite_user_id from public.profiles where lower(email) = ${email}`;
@@ -104,19 +124,11 @@ async function resolveStaff(email: string, info: StaffInfo): Promise<{ id: strin
     console.error("zite_user_id already on another profile", info.ziteUserId);
     throw new BridgeError(409, "zite_user_conflict");
   }
-  if (profile && profile.role !== "staff" && profile.role !== "former_staff") {
-    // The address belongs to a referrer or a client: never turn it into staff.
+  if (profile && profile.role !== "staff" && profile.role !== "former_staff" && !(await isBlankClient(profile.id, profile.role))) {
+    // The address belongs to a referrer or a real client: never turn it into staff.
     throw new BridgeError(403, "email_not_staff");
   }
-  let id: string = profile?.id;
-  if (!id) {
-    const { data, error } = await admin.auth.admin.createUser({ email, email_confirm: true });
-    if (error || !data?.user) {
-      console.error("createUser (staff) failed", error?.message);
-      throw new BridgeError(500, "account_creation_failed");
-    }
-    id = data.user.id;
-  }
+  const id: string = profile?.id ?? await createAuthUser(email);
   // organization_id is filled by the profiles_set_staff_organization trigger.
   await sql`update public.profiles
                set role = 'staff', staff_role = ${info.staffRole}, zite_user_id = ${info.ziteUserId},
@@ -140,6 +152,11 @@ async function resolveUser(email: string, audience: Audience, payload: Record<st
     // The portal never acts for Gemina's team, past or present.
     if (profile.role === "staff" || profile.role === "former_staff") throw new BridgeError(403, "staff_use_gestionale");
 
+    if (partner && await isBlankClient(profile.id, profile.role)) {
+      // A first portal call that stopped half way (see isBlankClient): finish it.
+      await sql`update public.profiles set role = 'partner' where id = ${profile.id}`;
+      profile.role = "partner";
+    }
     if (profile.role === "partner") {
       // Membership follows the email on the referrer record: if the email changed
       // or the referrer was archived, access is removed here.
@@ -157,13 +174,8 @@ async function resolveUser(email: string, audience: Audience, payload: Record<st
   // through the portal. Staff come from the Gestionale (resolveStaff); clients come later.
   if (!partner) throw new BridgeError(403, "unknown_user");
 
-  const { data, error } = await admin.auth.admin.createUser({ email, email_confirm: true });
-  if (error || !data?.user) {
-    console.error("createUser failed", error?.message);
-    throw new BridgeError(500, "account_creation_failed");
-  }
-  const id = data.user.id;
-  await sql`update public.profiles set role = 'partner' where id = ${id}`;
+  const id = await createAuthUser(email);
+  await sql`update public.profiles set role = 'partner' where id = ${id} and role = 'client'`;
   await sql`insert into public.partner_members (partner_id, profile_id)
             values (${partner.id}, ${id}) on conflict do nothing`;
   return { id, role: "partner" };
@@ -401,7 +413,8 @@ Deno.serve(async (req) => {
     if (code === "42501") return reply(403, { ok: false, error: "not_allowed" });
     if (code === "P0429") return reply(429, { ok: false, error: "rate_limited" });
     if (code === "23503" || code === "23514") return reply(400, { ok: false, error: "invalid_reference" });
-    console.error("bridge error", e);
+    // Code and message only: the whole error can carry query parameters (emails, message text).
+    console.error("bridge error", code ?? "", (e as { message?: string })?.message ?? "");
     return reply(500, { ok: false, error: "internal_error" });
   }
 });

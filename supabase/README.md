@@ -21,10 +21,11 @@ Plan: `piano-database-supabase.md` (v0.3) and the review `claude/2026-10-19-veri
 
 ## Baseline (20261019180000_baseline_from_production.sql)
 It is the structure of production on 2026-10-19, read from its catalog (production had changes applied outside recorded migrations).
-- **Dev / new projects:** apply it normally.
-- **Production:** already has all of it. Do NOT run it there. Mark it as applied instead, e.g. with the CLI:
-  `supabase migration repair --status applied 20261019180000`
-  (the 5 older production migrations can be marked `reverted` the same way, since the baseline replaces them).
+- **Production (new, clean project):** apply every file in `migrations/` in order, baseline first, nothing skipped.
+- **Dev (gsnmtfugfhhrutmlvhzt):** this is the project the baseline was read from, so it already had the baseline's
+  structure; its history also lists 5 older migrations from before the baseline. Nothing to do there.
+- (Until 2026-10-20 this section said to mark the baseline as applied on production: that was for the old plan in
+  which gsnmtfugfhhrutmlvhzt was production. Ignore it.)
 
 ## Settings that are not SQL (set once per project)
 - Auth: sign-ups disabled; site URL and redirect URLs; leaked-password protection or password sign-in off.
