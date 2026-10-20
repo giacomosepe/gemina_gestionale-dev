@@ -37,5 +37,7 @@ It is the structure of production on 2026-10-19, read from its catalog (producti
 - Bridge action `sync_partner` (staff secret): segnalatori created, edited, archived or deleted in the Gestionale update
   `public.partners` (deleted = archived). Edge Function settings: **production** `PARTNER_EMAILS_REAL=true`; **dev**
   `DEV_TEST_PARTNER_EMAILS` = Giacomo's test addresses (comma separated). Without them real referrer emails are replaced
-  by placeholders (dev keeps no real referrer data).
+  by placeholders (dev keeps no real referrer data). Archiving or an email change drops portal memberships at once;
+  a deleted segnalatore is archived with its email released. Action `archive_missing_partners` (repair, run by the
+  Gestionale's admin endpoint `sincronizzaSegnalatoriSupabase`) archives referrers that no longer exist in Zite.
 - Later: token hook, MFA, Resend key.

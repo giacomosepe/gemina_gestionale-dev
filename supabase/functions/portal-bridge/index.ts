@@ -26,7 +26,8 @@
 // 2026-10-20 (v4): action notify (either secret): a Zite bell event for one current staff member
 // (migration 20261020191340).
 // 2026-10-20 (v5): action sync_partner (staff secret): segnalatori created/edited/archived/deleted in Zite
-// update public.partners; real emails only with PARTNER_EMAILS_REAL=true or DEV_TEST_PARTNER_EMAILS.
+// update public.partners; real emails only with PARTNER_EMAILS_REAL=true or DEV_TEST_PARTNER_EMAILS. Archiving or an
+// email change drops portal memberships at once; archive_missing_partners repairs lost deletes.
 
 import postgres from "npm:postgres@3.4.5";
 import { createClient } from "npm:@supabase/supabase-js@2.50.0";
@@ -262,8 +263,10 @@ async function syncPartner(audience: Audience, p: Record<string, unknown>) {
   const name = text(p.name, "name", 200);
   const given = optText(p.email, "email", 254)?.toLowerCase() ?? null;
   if (given && !EMAIL.test(given)) throw new BridgeError(400, "invalid_email");
-  const archived = p.archived === true || p.removed === true;
-  const email = !given ? null
+  const removed = p.removed === true;
+  const archived = p.archived === true || removed;
+  // A deleted segnalatore gives its email back (the unique index covers archived rows too), so it can be used again.
+  const email = !given || removed ? null
     : PARTNER_EMAILS_REAL || DEV_TEST_PARTNER_EMAILS.has(given) ? given
     : `segnalatore-${ziteId.replace(/[^A-Za-z0-9]/g, "").slice(0, 12)}@example.test`;
   const [row] = await sql`
@@ -272,7 +275,27 @@ async function syncPartner(audience: Audience, p: Record<string, unknown>) {
     on conflict (zite_segnalatore_id) do update
       set name = excluded.name, email = excluded.email, archived = excluded.archived
     returning id, archived`;
-  return { id: row.id, archived: row.archived, real_email: email === given };
+  // Access ends now, not at the person's next call: drop the memberships of an archived referrer, and of any
+  // profile whose address is no longer the referrer's (an email change).
+  await sql`delete from public.partner_members pm using public.profiles pr
+             where pm.partner_id = ${row.id} and pr.id = pm.profile_id
+               and (${archived} or lower(pr.email) is distinct from ${email})`;
+  return { id: row.id, archived: row.archived, real_email: !given || email === given };
+}
+
+// Repair: the Gestionale sends the ids of every segnalatore that still exists; any other referrer record is
+// archived (and its email released). Covers a delete whose sync was lost.
+async function archiveMissingPartners(audience: Audience, p: Record<string, unknown>) {
+  if (audience !== "staff") throw new BridgeError(403, "staff_only");
+  if (!Array.isArray(p.zite_segnalatore_ids) || p.zite_segnalatore_ids.length > 5000) throw new BridgeError(400, "invalid_ids");
+  const keep = p.zite_segnalatore_ids.map((v) => text(v, "zite_segnalatore_id", 100));
+  const gone = await sql`update public.partners set archived = true, email = null
+                          where not (zite_segnalatore_id = any(${keep}::text[])) and (not archived or email is not null)
+                          returning id`;
+  if (gone.length) {
+    await sql`delete from public.partner_members where partner_id = any(${gone.map((g) => g.id)}::uuid[])`;
+  }
+  return { archived: gone.length };
 }
 
 // ---------------------------------------------------------------------------
@@ -468,6 +491,7 @@ Deno.serve(async (req) => {
     if (payload.action === "notify") return reply(200, { ok: true, data: await notify(audience, payload) });
     // sync_partner too: the Gestionale's server telling Supabase about a segnalatore record.
     if (payload.action === "sync_partner") return reply(200, { ok: true, data: await syncPartner(audience, payload) });
+    if (payload.action === "archive_missing_partners") return reply(200, { ok: true, data: await archiveMissingPartners(audience, payload) });
 
     const email = String(payload.email ?? "").trim().toLowerCase();
     if (!EMAIL.test(email)) throw new BridgeError(400, "invalid_email");
