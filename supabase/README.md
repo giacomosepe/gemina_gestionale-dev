@@ -34,4 +34,8 @@ It is the structure of production on 2026-10-19, read from its catalog (producti
 - Bridge action `notify` (both secrets): Zite's bell events for one current staff member. With the portal secret only the
   Portal's own events (messaggio-segnalatore, nuova-segnalazione, primo-accesso) and segnalatore links, and no actor.
   Kind `event` labels are Zite's bell text: a future unread-email job must skip them (Zite emails those itself).
+- Bridge action `sync_partner` (staff secret): segnalatori created, edited, archived or deleted in the Gestionale update
+  `public.partners` (deleted = archived). Edge Function settings: **production** `PARTNER_EMAILS_REAL=true`; **dev**
+  `DEV_TEST_PARTNER_EMAILS` = Giacomo's test addresses (comma separated). Without them real referrer emails are replaced
+  by placeholders (dev keeps no real referrer data).
 - Later: token hook, MFA, Resend key.

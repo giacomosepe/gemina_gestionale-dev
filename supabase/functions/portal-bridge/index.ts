@@ -1,4 +1,4 @@
-// portal-bridge (v4)
+// portal-bridge (v5)
 // Lets Zite endpoints use Supabase on behalf of the person logged in to Zite.
 //
 // Trust model:
@@ -25,6 +25,8 @@
 // The portal refuses former_staff as well as staff.
 // 2026-10-20 (v4): action notify (either secret): a Zite bell event for one current staff member
 // (migration 20261020191340).
+// 2026-10-20 (v5): action sync_partner (staff secret): segnalatori created/edited/archived/deleted in Zite
+// update public.partners; real emails only with PARTNER_EMAILS_REAL=true or DEV_TEST_PARTNER_EMAILS.
 
 import postgres from "npm:postgres@3.4.5";
 import { createClient } from "npm:@supabase/supabase-js@2.50.0";
@@ -244,6 +246,35 @@ async function notify(audience: Audience, p: Record<string, unknown>) {
   return { created: rows.length };
 }
 
+// A segnalatore was created, edited, archived or deleted in the Gestionale (staff secret only): the Supabase
+// referrer record follows, by Zite id. Deleting = archived (the record and its history stay; access ends at the
+// person's next portal call, as the bridge checks partners.email and archived).
+// Emails: real ones only where this project allows it. Production sets PARTNER_EMAILS_REAL=true. Dev keeps no real
+// referrer data, so it stores a placeholder unless the address is one of DEV_TEST_PARTNER_EMAILS (Giacomo's test
+// accounts). Missing settings = placeholder: a mistake hides addresses, it never leaks them.
+const PARTNER_EMAILS_REAL = Deno.env.get("PARTNER_EMAILS_REAL") === "true";
+const DEV_TEST_PARTNER_EMAILS = new Set((Deno.env.get("DEV_TEST_PARTNER_EMAILS") ?? "")
+  .split(",").map((e) => e.trim().toLowerCase()).filter(Boolean));
+
+async function syncPartner(audience: Audience, p: Record<string, unknown>) {
+  if (audience !== "staff") throw new BridgeError(403, "staff_only");
+  const ziteId = text(p.zite_segnalatore_id, "zite_segnalatore_id", 100);
+  const name = text(p.name, "name", 200);
+  const given = optText(p.email, "email", 254)?.toLowerCase() ?? null;
+  if (given && !EMAIL.test(given)) throw new BridgeError(400, "invalid_email");
+  const archived = p.archived === true || p.removed === true;
+  const email = !given ? null
+    : PARTNER_EMAILS_REAL || DEV_TEST_PARTNER_EMAILS.has(given) ? given
+    : `segnalatore-${ziteId.replace(/[^A-Za-z0-9]/g, "").slice(0, 12)}@example.test`;
+  const [row] = await sql`
+    insert into public.partners (zite_segnalatore_id, name, email, archived)
+    values (${ziteId}, ${name}, ${email}, ${archived})
+    on conflict (zite_segnalatore_id) do update
+      set name = excluded.name, email = excluded.email, archived = excluded.archived
+    returning id, archived`;
+  return { id: row.id, archived: row.archived, real_email: email === given };
+}
+
 // ---------------------------------------------------------------------------
 // Actions
 // ---------------------------------------------------------------------------
@@ -435,6 +466,8 @@ Deno.serve(async (req) => {
   try {
     // notify acts for nobody: it is a server-to-server message from Zite (see notify above).
     if (payload.action === "notify") return reply(200, { ok: true, data: await notify(audience, payload) });
+    // sync_partner too: the Gestionale's server telling Supabase about a segnalatore record.
+    if (payload.action === "sync_partner") return reply(200, { ok: true, data: await syncPartner(audience, payload) });
 
     const email = String(payload.email ?? "").trim().toLowerCase();
     if (!EMAIL.test(email)) throw new BridgeError(400, "invalid_email");
