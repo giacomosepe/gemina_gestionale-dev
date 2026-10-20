@@ -1,4 +1,4 @@
--- Bell events from Zite (migration 20261020210000). Same pattern as 001-003: one DO block, rolled back by
+-- Bell events from Zite (migration 20261020191340). Same pattern as 001-003: one DO block, rolled back by
 -- the final RAISE; the message is the report. The bridge's insert is mirrored as a plain insert (full rights).
 
 do $$

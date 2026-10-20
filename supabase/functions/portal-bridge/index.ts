@@ -23,7 +23,7 @@
 // staff profile to match (migration 20261020183659). New action staff_leave (admin only).
 // The portal refuses former_staff as well as staff.
 // 2026-10-20 (v4): action notify (either secret): a Zite bell event for one current staff member
-// (migration 20261020210000).
+// (migration 20261020191340).
 
 import postgres from "npm:postgres@3.4.5";
 import { createClient } from "npm:@supabase/supabase-js@2.50.0";
