@@ -5,9 +5,8 @@
 revoke insert, delete, truncate on public.profiles from authenticated, anon;
 
 -- 2. A person who left the team keeps no write power on their old comments (their last token lives up to 1 hour).
-drop policy "comments: author edits own" on public.comments;
-create policy "comments: author edits own" on public.comments
-  for update to authenticated
+-- (ALTER, not DROP + CREATE: same result, and the Supabase connector used by Claude refuses statements with DROP.)
+alter policy "comments: author edits own" on public.comments
   using (author_id = (select auth.uid()) and private.is_staff())
   with check (author_id = (select auth.uid()) and private.is_staff());
 
