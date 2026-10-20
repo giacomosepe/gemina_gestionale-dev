@@ -31,4 +31,7 @@ It is the structure of production on 2026-10-19, read from its catalog (producti
 - Auth: sign-ups disabled; site URL and redirect URLs; leaked-password protection or password sign-in off.
 - Edge Function `portal-bridge` deployed (verify_jwt off: it checks its own secrets), with secrets `BRIDGE_SECRET_STAFF` and `BRIDGE_SECRET_PORTAL` (different values).
 - Staff accounts are not created by hand: the bridge makes them from the Gestionale's Ruoli (see migration 20261020183659).
+- Bridge action `notify` (both secrets): Zite's bell events for one current staff member. With the portal secret only the
+  Portal's own events (messaggio-segnalatore, nuova-segnalazione, primo-accesso) and segnalatore links, and no actor.
+  Kind `event` labels are Zite's bell text: a future unread-email job must skip them (Zite emails those itself).
 - Later: token hook, MFA, Resend key.

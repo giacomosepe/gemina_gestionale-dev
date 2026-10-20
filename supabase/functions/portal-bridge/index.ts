@@ -4,7 +4,8 @@
 // Trust model:
 // - Two secrets, one per Zite app:
 //     BRIDGE_SECRET_STAFF  -> gestionale (internal): only acts for staff
-//     BRIDGE_SECRET_PORTAL -> portale segnalatori (external): never acts for staff
+//     BRIDGE_SECRET_PORTAL -> portale segnalatori (external): never acts for staff; its only
+//                             write towards staff is `notify` with the Portal's own events (see notify)
 // - The caller (a Zite endpoint) must pass the email of the logged-in Zite user
 //   taken from context.user — never from anything the browser sends.
 // - Every action runs inside Postgres AS THAT PERSON (role "authenticated" +
@@ -213,12 +214,22 @@ async function staffLeave(audience: Audience, callerId: string, p: Record<string
 // Zite names the recipient by Zite user id; only a CURRENT staff profile is notified (nobody else, ever): a person
 // who has never opened the Gestionale since staff follow Ruoli has no profile yet and is skipped (Zite's own bell
 // still has it during the overlap). The text is Zite's bell text; event_key (the Zite row id) makes it arrive once.
-async function notify(p: Record<string, unknown>) {
+// The Portal (portal secret) may only send the events the Portal really makes, with links to segnalatore pages, and never
+// names an actor: so the portal secret cannot impersonate a colleague or point a bell anywhere else.
+const PORTAL_EVENTS = new Set(["messaggio-segnalatore", "nuova-segnalazione", "primo-accesso"]);
+const PORTAL_LINK = /^(segnalatore:[A-Za-z0-9-]{1,60}|scheda-segnalatore:[A-Za-z0-9-]{1,60}|segnalazioni)$/;
+
+async function notify(audience: Audience, p: Record<string, unknown>) {
   const recipient = text(p.recipient_zite_user_id, "recipient_zite_user_id", 100);
-  const actor = optText(p.actor_zite_user_id, "actor_zite_user_id", 100);
   const event = text(p.event, "event", 60);
   const label = text(p.label, "label", 300);
   const link = optText(p.link, "link", 200);
+  let actor = optText(p.actor_zite_user_id, "actor_zite_user_id", 100);
+  if (audience === "portal") {
+    if (!PORTAL_EVENTS.has(event)) throw new BridgeError(403, "event_not_allowed");
+    if (link && !PORTAL_LINK.test(link)) throw new BridgeError(403, "link_not_allowed");
+    actor = null;
+  }
   const eventKey = text(p.event_key, "event_key", 100);
   const rows = await sql`
     insert into public.notifications (organization_id, recipient_id, kind, actor_id, label, event, link, event_key)
@@ -423,7 +434,7 @@ Deno.serve(async (req) => {
 
   try {
     // notify acts for nobody: it is a server-to-server message from Zite (see notify above).
-    if (payload.action === "notify") return reply(200, { ok: true, data: await notify(payload) });
+    if (payload.action === "notify") return reply(200, { ok: true, data: await notify(audience, payload) });
 
     const email = String(payload.email ?? "").trim().toLowerCase();
     if (!EMAIL.test(email)) throw new BridgeError(400, "invalid_email");
