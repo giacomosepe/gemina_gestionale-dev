@@ -63,7 +63,7 @@ It is the structure of production on 2026-10-19, read from its catalog (producti
 - Automatic messages (migration 20261021155543): `messages.automatic` = a message signed Gemina Advisory with no sender, written
   only by the bridge (v7 action `post_automatic_message`, staff secret) for the Gestionale's own notices; only the segnalatore
   gets a bell, no Supabase email (Zite sends its own). "Notifica segnalatore" ignores a second press within a minute.
-- Team documents and reminders (migrations 20261022001000 + 20261022001100): `documents.kind = 'team'` = Gemina's own files on a
+- Team documents and reminders (migrations 20261021221703 + 20261021221829): `documents.kind = 'team'` = Gemina's own files on a
   pratica (azione attachments; path `team/<pratica>/<doc>/<name>`, staff only, never shared, `zite_attivita_id` optional), listed in
   the pratica's «Documenti dal server». `public.reminders` (one per pratica and date key; staff write from the browser; recipients =
   Zite user ids) + `public.reminder_sends`; pg_cron job `pratica-reminders` every hour at :05 runs `private.send_due_reminders()`,

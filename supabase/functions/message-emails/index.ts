@@ -10,7 +10,7 @@
 //   conversation (never the text), a button to the portal. Replies by email are not invited (reply-to stays partners@).
 // - To the team: a message notification still unread by anyone at Gemina after 15 minutes: one email per person per run,
 //   listing the subjects (never the text). Never for kind 'event' (Zite emails those).
-// - Reminders (migration 20261022001100): the hourly job private.send_due_reminders() calls mode "reminders" after writing the
+// - Reminders (migration 20261021221829): the hourly job private.send_due_reminders() calls mode "reminders" after writing the
 //   morning's bells; each colleague gets one email listing them.
 // - Documents (step 7, migration 20261021145534): "Notifica segnalatore" (public.notify_document) calls mode "document": one
 //   email to the referrer with the document's name (never its content) and a button to the portal. A file the referrer
@@ -252,7 +252,7 @@ async function documentEmail(documentId: string): Promise<number> {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
-// Reminders of pratica dates (migration 20261022001100): the bells written this morning by private.send_due_reminders(), one
+// Reminders of pratica dates (migration 20261021221829): the bells written this morning by private.send_due_reminders(), one
 // email per colleague listing them. Claimed with emailed_at like the other emails; a failed send is released for the next run.
 // ---------------------------------------------------------------------------------------------------------------------------
 async function reminderEmails(): Promise<number> {

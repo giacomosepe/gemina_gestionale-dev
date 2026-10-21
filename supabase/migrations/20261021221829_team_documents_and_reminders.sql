@@ -1,6 +1,6 @@
 -- Team documents and date reminders (2026-10-22, pratica side panel redesign).
 --
--- 1. Team documents: kind 'team' (added by 20261022001000) = Gemina's own files about a pratica, today the attachments of the
+-- 1. Team documents: kind 'team' (added by 20261021221703) = Gemina's own files about a pratica, today the attachments of the
 --    azioni, kept in the private bucket "documents" under team/<pratica>/<document>/<name>. Staff only (the existing read,
 --    upload and Storage policies already give 'team' to staff only through private.can_access_scope); never shared outside;
 --    the pratica is required, the azione optional (zite_attivita_id). They show in the pratica's «Documenti dal server».

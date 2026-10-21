@@ -1,4 +1,4 @@
--- Team documents (kind 'team') and date reminders (migrations 20261022001000 and 20261022001100). Same pattern as 001-007: one
+-- Team documents (kind 'team') and date reminders (migrations 20261021221703 and 20261021221829). Same pattern as 001-007: one
 -- DO block, everything rolled back by the final RAISE; the message is the report. Email requests are only queued in pg_net
 -- (never sent: this block never commits); a placeholder functions_url is stored if none exists.
 
