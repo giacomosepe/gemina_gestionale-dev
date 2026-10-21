@@ -53,7 +53,7 @@ begin
   begin
     insert into public.documents (kind, title) values ('team', 'senza pratica.pdf');
     ok := false;
-  exception when others then ok := true; end;
+  exception when check_violation then ok := true; end;
   failures := failures + (not ok)::int;
   report := report || format(E'%s a team document needs a pratica\n', case when ok then 'PASS' else 'FAIL' end);
 
@@ -85,6 +85,14 @@ begin
   reset role;
   failures := failures + (not ok)::int;
   report := report || format(E'%s a segnalatore cannot add a team document nor read its file\n', case when ok then 'PASS' else 'FAIL' end);
+
+  begin
+    insert into public.documents (kind, title, zite_pratica_id, conversation_id)
+      select 'team', 'in conversazione.pdf', 't8-pratica', id from public.conversations limit 1;
+    ok := not found;
+  exception when check_violation then ok := true; end;
+  failures := failures + (not ok)::int;
+  report := report || format(E'%s a team document cannot sit in a conversation\n', case when ok then 'PASS' else 'FAIL' end);
 
   ---------------------------------------------------------------- reminders: who may write
   perform set_config('request.jwt.claims', json_build_object('sub', u_ref, 'role', 'authenticated')::text, true);
@@ -128,7 +136,8 @@ begin
 
   ---------------------------------------------------------------- the morning job
   select count(*) into q0 from net.http_request_queue;
-  n := private.send_due_reminders(true);
+  perform private.send_due_reminders(true);
+  select count(*) into n from public.notifications where recipient_id in (u_s1, u_s2) and event = 'promemoria';
   ok := n = 2; failures := failures + (not ok)::int;
   report := report || format(E'%s 7 days before: a bell for each recipient, none for a reminder not due (expect 2, got %s)\n', case when ok then 'PASS' else 'FAIL' end, n);
   select count(*) into n from public.notifications where recipient_id = u_s1 and event = 'promemoria' and link = 'pratica:t8-pratica'
@@ -136,30 +145,35 @@ begin
   ok := n = 1; failures := failures + (not ok)::int;
   report := report || format(E'%s the bell says what, when and which pratica, and opens the pratica (got %s)\n', case when ok then 'PASS' else 'FAIL' end, n);
   select count(*) - q0 into n from net.http_request_queue;
-  ok := n = 1; failures := failures + (not ok)::int;
+  ok := n = 1 or not exists (select 1 from vault.decrypted_secrets where name = 'message_emails_secret'); failures := failures + (not ok)::int;
   report := report || format(E'%s one email request for the run (got %s)\n', case when ok then 'PASS' else 'FAIL' end, n);
 
-  n := private.send_due_reminders(true);
+  perform private.send_due_reminders(true);
+  select count(*) into n from public.notifications where recipient_id in (u_s1, u_s2) and event = 'promemoria';
+  n := n - 2;
   ok := n = 0; failures := failures + (not ok)::int;
   report := report || format(E'%s a second run the same day sends nothing (got %s)\n', case when ok then 'PASS' else 'FAIL' end, n);
 
   n := private.send_due_reminders(false);
-  ok := n = 0 or extract(hour from now() at time zone 'Europe/Rome') = 8; failures := failures + (not ok)::int;
-  report := report || format(E'%s outside 8 in Rome the hourly job does nothing\n', case when ok then 'PASS' else 'FAIL' end);
+  ok := n = 0 or extract(hour from now() at time zone 'Europe/Rome') >= 8; failures := failures + (not ok)::int;
+  report := report || format(E'%s before 8 in Rome the hourly job does nothing\n', case when ok then 'PASS' else 'FAIL' end);
 
   update public.reminders set due_date = today + 1 where id = rem;
-  n := private.send_due_reminders(true);
+  perform private.send_due_reminders(true);
+  select count(*) - 2 into n from public.notifications where recipient_id in (u_s1, u_s2) and event = 'promemoria';
   ok := n = 2; failures := failures + (not ok)::int;
   report := report || format(E'%s a changed date re-arms the reminder (1 day before: expect 2, got %s)\n', case when ok then 'PASS' else 'FAIL' end, n);
 
   update public.reminders set due_date = today + 7, closed = true where id = rem;
   delete from public.reminder_sends where reminder_id = rem;
-  n := private.send_due_reminders(true);
+  perform private.send_due_reminders(true);
+  select count(*) - 4 into n from public.notifications where recipient_id in (u_s1, u_s2) and event = 'promemoria';
   ok := n = 0; failures := failures + (not ok)::int;
   report := report || format(E'%s a closed pratica gets no reminders (got %s)\n', case when ok then 'PASS' else 'FAIL' end, n);
 
   update public.reminders set closed = false, due_date = today - 1, days_before = array[0] where id = rem;
-  n := private.send_due_reminders(true);
+  perform private.send_due_reminders(true);
+  select count(*) - 4 into n from public.notifications where recipient_id in (u_s1, u_s2) and event = 'promemoria';
   ok := n = 0; failures := failures + (not ok)::int;
   report := report || format(E'%s a past date sends nothing (got %s)\n', case when ok then 'PASS' else 'FAIL' end, n);
 

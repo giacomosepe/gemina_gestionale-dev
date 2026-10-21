@@ -261,7 +261,7 @@ async function reminderEmails(): Promise<number> {
       select n.id
         from public.notifications n
         join public.profiles r on r.id = n.recipient_id and r.role = 'staff'
-       where n.kind = 'event' and n.event = 'promemoria' and n.emailed_at is null
+       where n.kind = 'event' and n.event = 'promemoria' and n.event_key like 'rem:%' and n.emailed_at is null
          and n.created_at > now() - interval '1 day'
        for update of n skip locked)
     update public.notifications n set emailed_at = now()
@@ -320,8 +320,9 @@ Deno.serve(async (req) => {
       return reply(200, { ok: true, team: await reminderEmails() });
     }
     if (body.mode === "sweep") {
-      const [referrer, team] = [await referrerEmails(null), await teamEmails()];
-      return reply(200, { ok: true, referrer, team });
+      // reminders again: a send that failed in the morning is retried every 5 minutes for a day
+      const [referrer, team, reminders] = [await referrerEmails(null), await teamEmails(), await reminderEmails()];
+      return reply(200, { ok: true, referrer, team, reminders });
     }
     return reply(400, { ok: false, error: "unknown_mode" });
   } catch (e) {

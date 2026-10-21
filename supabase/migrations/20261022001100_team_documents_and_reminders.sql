@@ -6,7 +6,7 @@
 --    the pratica is required, the azione optional (zite_attivita_id). They show in the pratica's «Documenti dal server».
 -- 2. Reminders: a date of a pratica (firma, kick-off, a deadline, a milestone…) can warn chosen colleagues N days before.
 --    One row per pratica and date key, written by staff from the browser (0 Zite runs); recipients are Zite user ids, mapped
---    to staff profiles when sending. Every hour pg_cron calls private.send_due_reminders(), which acts only at 8 in Rome:
+--    to staff profiles when sending. Every hour pg_cron calls private.send_due_reminders(), which acts from 8 in Rome on:
 --    a bell (notifications, kind 'event', event 'promemoria', link pratica:<id>) per recipient, once per reminder, day and
 --    date (reminder_sends), then one request to message-emails (mode "reminders") for the emails. A changed date re-arms it.
 
@@ -160,8 +160,9 @@ create table public.reminders (
   label           text not null check (char_length(label) between 1 and 200),
   pratica_title   text check (char_length(pratica_title) <= 300),
   due_date        date not null,
-  days_before     smallint[] not null check (cardinality(days_before) between 1 and 6 and 0 <= all(days_before) and 90 >= all(days_before)),
-  recipients      text[] not null check (cardinality(recipients) between 1 and 20),
+  days_before     smallint[] not null check (cardinality(days_before) between 1 and 6 and array_position(days_before, null) is null
+                                         and 0 <= all(days_before) and 90 >= all(days_before)),
+  recipients      text[] not null check (cardinality(recipients) between 1 and 20 and array_position(recipients, null) is null),
   -- the pratica is closed (set by the Gestionale): nothing is sent
   closed          boolean not null default false,
   created_by      uuid default (select auth.uid()) references public.profiles(id) on delete set null,
@@ -190,7 +191,10 @@ begin
   end if;
   new.recipients := array(select distinct r from unnest(new.recipients) r order by r);
   new.days_before := array(select distinct d from unnest(new.days_before) d order by d desc);
-  if tg_op = 'UPDATE' then
+  if tg_op = 'INSERT' then
+    new.created_by := coalesce((select auth.uid()), new.created_by);
+    new.organization_id := private.default_organization_id();
+  else
     new.id := old.id;
     new.organization_id := old.organization_id;
     new.created_by := old.created_by;
@@ -212,8 +216,11 @@ create policy "reminder_sends: staff read" on public.reminder_sends for select t
 grant select, insert, update, delete on public.reminders to authenticated;
 grant select on public.reminder_sends to authenticated;
 revoke all on public.reminders, public.reminder_sends from anon;
+revoke truncate, references, trigger on public.reminders, public.reminder_sends from authenticated;
+revoke insert, update, delete on public.reminder_sends from authenticated;
 
--- The warnings due today. `p_force`: run whatever the hour (tests, a manual run); otherwise only at 8 in Rome.
+-- The warnings due today. `p_force`: run whatever the hour (tests, a manual run); otherwise from 8 in Rome on: the first run
+-- after 8 sends them, a later one catches up what a missed run or a reminder set during the day left (never twice: reminder_sends).
 -- Returns how many bells were written.
 create function private.send_due_reminders(p_force boolean default false) returns integer
 language plpgsql security definer set search_path = '' as $$
@@ -223,9 +230,10 @@ declare
   r         record;
   days      int;
   bells     int := 0;
+  written   int;
   quando    text;
 begin
-  if not p_force and extract(hour from rome) <> 8 then
+  if not p_force and extract(hour from rome) < 8 then
     return 0;
   end if;
   for r in
@@ -250,8 +258,8 @@ begin
       from public.profiles p
      where p.role = 'staff' and p.zite_user_id = any(r.recipients)
     on conflict do nothing;
-    get diagnostics days = row_count;
-    bells := bells + days;
+    get diagnostics written = row_count;
+    bells := bells + written;
   end loop;
   if bells > 0 then
     perform private.call_message_emails(jsonb_build_object('mode', 'reminders'));
