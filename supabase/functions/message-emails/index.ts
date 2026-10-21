@@ -15,13 +15,14 @@
 // - Each conversation/notification is claimed in the database before sending; if Resend fails it is released, so the
 //   next sweep tries again.
 //
-// Settings (Edge Function secrets): RESEND_API_KEY (required); PARTNER_EMAILS_REAL / DEV_TEST_PARTNER_EMAILS (as the
+// Settings (Edge Function secrets): RESEND_API_KEY (required; dev also accepts RESEND_SUPABASE_KEY); PARTNER_EMAILS_REAL / DEV_TEST_PARTNER_EMAILS (as the
 // bridge); optional URL_PORTALE, URL_GESTIONALE.
 
 import postgres from "npm:postgres@3.4.5";
 
 const DB_URL = Deno.env.get("SUPABASE_DB_URL")!;
-const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
+// The dev project holds the key as RESEND_SUPABASE_KEY (set 21 Oct); production uses RESEND_API_KEY (checklist).
+const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? Deno.env.get("RESEND_SUPABASE_KEY") ?? "";
 const PARTNER_EMAILS_REAL = Deno.env.get("PARTNER_EMAILS_REAL") === "true";
 const DEV_TEST_PARTNER_EMAILS = new Set((Deno.env.get("DEV_TEST_PARTNER_EMAILS") ?? "")
   .split(",").map((e) => e.trim().toLowerCase()).filter(Boolean));
