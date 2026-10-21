@@ -18,7 +18,10 @@
 -- - conversation, message and version must belong to the document's own scope;
 -- - the storage path is made by the server, and a file can be uploaded once, only by its author;
 -- - a staff edit cannot move a document to another scope or path, or fake its upload;
--- - at most 30 new documents a minute per person (staff excepted), like the message send limit.
+-- - at most 30 new documents a minute and 300 an hour per person (staff excepted), like the message send limit;
+-- - a segnalatore's row cannot name a company, a hidden message, or a version they cannot see; upload and confirmation re-check
+--   that they still belong to the segnalatore.
+-- Inserts made with full rights (the bridge, the service role) are not rewritten: the overrides apply to browser logins only.
 --
 -- Notices: a segnalatore's file shared outside a message → bell for the current team (kind 'document'; the team email follows the
 -- 15-minute rule of messages, in message-emails). A file on a message rides on that message's notice. A Gemina document is
@@ -32,7 +35,7 @@ alter type public.notification_kind add value if not exists 'document';
 
 alter table public.documents alter column storage_path drop not null;
 alter table public.documents
-  add column link_url          text check (link_url ~ '^https://[^\s]+$' and char_length(link_url) <= 2000),
+  add column link_url          text check (link_url ~ '^https://[^\s"''<>]+$' and char_length(link_url) <= 2000),
   add column version_of        uuid references public.documents(id) on delete set null,
   add column zite_azienda_id   text check (char_length(zite_azienda_id) <= 100),
   add column category          text check (char_length(category) <= 60),
@@ -41,6 +44,13 @@ alter table public.documents
   add column notified_at       timestamptz,
   add column zite_documento_id text check (char_length(zite_documento_id) <= 100);
 alter table public.documents add constraint documents_file_or_link check ((storage_path is null) <> (link_url is null));
+revoke truncate on public.documents from authenticated;
+
+-- Rows from before this step: their files are in Storage already; who shared them follows the uploader.
+update public.documents d
+   set uploaded_at = d.created_at,
+       from_gemina = exists (select 1 from public.profiles p where p.id = d.uploaded_by and p.role in ('staff', 'former_staff'))
+ where d.uploaded_at is null and d.storage_path is not null;
 
 comment on column public.documents.storage_path is 'Path in the bucket "documents", made by the server; null for a link';
 comment on column public.documents.link_url is 'A shared link (https), instead of a file';
@@ -55,6 +65,7 @@ comment on column public.documents.zite_documento_id is 'Zite row it was copied 
 create index documents_version_of_idx on public.documents (version_of);
 create index documents_zite_azienda_id_idx on public.documents (zite_azienda_id);
 create index documents_uploaded_by_created_idx on public.documents (uploaded_by, created_at);
+create index documents_partner_created_idx on public.documents (partner_id, created_at desc) where deleted_at is null;
 create unique index documents_zite_documento_id_key on public.documents (zite_documento_id) where zite_documento_id is not null;
 
 alter table public.notifications add column document_id uuid references public.documents(id) on delete cascade;
@@ -78,7 +89,9 @@ language sql stable security definer set search_path = '' as $$
 $$;
 
 alter policy "documents: read" on public.documents
-  using (private.can_see_document(kind, company_id, partner_id, shared, deleted_at, message_id, uploaded_at, uploaded_by));
+  using ((select private.is_staff())
+         or (shared and deleted_at is null
+             and private.can_see_document(kind, company_id, partner_id, shared, deleted_at, message_id, uploaded_at, uploaded_by)));
 
 create or replace function private.can_access_document_path(path text) returns boolean
 language sql stable security definer set search_path = '' as $$
@@ -97,7 +110,8 @@ language sql stable security definer set search_path = '' as $$
      where d.storage_path = path
        and d.uploaded_by = (select auth.uid())
        and d.deleted_at is null
-       and d.uploaded_at is null);
+       and d.uploaded_at is null
+       and private.can_access_scope(d.kind, d.company_id, d.partner_id));
 $$;
 
 -- 3. Server values and scope checks on a new document ----------------------------------------------------------------------------
@@ -107,12 +121,14 @@ language sql immutable set search_path = '' as $$
                                              '^[._-]+', ''), 120), ''), 'file');
 $$;
 
--- Runs before documents_set_organization (triggers fire in name order).
+-- Runs before documents_set_organization (triggers fire in name order). `browser`: a person logged in through the API
+-- (JWT role authenticated); full-rights callers (service role, owner) and the history import are trusted as they are.
 create function private.documents_before_insert() returns trigger
 language plpgsql security definer set search_path = '' as $$
 declare
   uid uuid := (select auth.uid());
   importing boolean := (select auth.uid()) is null and coalesce(current_setting('gemina.import', true), '') = 'on';
+  browser boolean := coalesce((select auth.role()), '') = 'authenticated';
   staff boolean := private.is_staff();
   c public.conversations%rowtype;
   m public.messages%rowtype;
@@ -129,7 +145,7 @@ begin
     elsif new.conversation_id <> m.conversation_id then
       raise exception 'the message is in another conversation' using errcode = '23514';
     end if;
-    if not importing and not staff and m.sender_id is distinct from uid then
+    if browser and not staff and (m.sender_id is distinct from uid or m.deleted_at is not null) then
       raise exception 'files can be attached only to your own messages' using errcode = '42501';
     end if;
     if m.internal then
@@ -149,19 +165,28 @@ begin
   if new.version_of is not null then
     select * into v from public.documents where id = new.version_of;
     if not found or v.kind <> new.kind or v.partner_id is distinct from new.partner_id
-       or v.company_id is distinct from new.company_id then
+       or v.company_id is distinct from new.company_id
+       or (browser and not staff and not private.can_see_document(v.kind, v.company_id, v.partner_id, v.shared, v.deleted_at,
+                                                                  v.message_id, v.uploaded_at, v.uploaded_by)) then
       raise exception 'the earlier version is outside the document''s scope' using errcode = '23514';
     end if;
     new.version_of := coalesce(v.version_of, v.id);
   end if;
 
-  if importing then
-    return new;  -- history copy: keeps id, times, path and Zite id as given
+  if not browser then
+    return new;  -- history copy or full-rights caller: keeps id, times, path and Zite id as given
   end if;
 
-  if not staff and (select count(*) from public.documents d
-                     where d.uploaded_by = uid and d.created_at > now() - interval '1 minute') >= 30 then
-    raise exception 'too many documents in a minute' using errcode = 'P0429';
+  if not staff then
+    if (select count(*) from public.documents d
+         where d.uploaded_by = uid and d.created_at > now() - interval '1 minute') >= 30
+       or (select count(*) from public.documents d
+            where d.uploaded_by = uid and d.created_at > now() - interval '1 hour') >= 300 then
+      raise exception 'too many documents' using errcode = 'P0429';
+    end if;
+    if new.kind = 'partner' then
+      new.company_id := null;
+    end if;
   end if;
 
   new.id := gen_random_uuid();
@@ -194,13 +219,14 @@ create trigger documents_a_before_insert
   before insert on public.documents
   for each row execute function private.documents_before_insert();
 
--- A browser edit (staff only, by policy) changes title, type, sharing or hiding; never scope, path, author or upload.
--- The server's own functions (security definer, not run as "authenticated") and the history import are not limited.
+-- A browser edit (staff only, by policy) changes title, type, sharing, hiding or the Zite azienda / pratica; never scope, path,
+-- author or upload. The server's own functions (security definer: they run as the owner), full-rights callers and the history
+-- import are not limited; any other role is.
 -- Security invoker on purpose: current_user must be the caller.
 create function private.documents_before_update() returns trigger
 language plpgsql security invoker set search_path = '' as $$
 begin
-  if current_user = 'authenticated' then
+  if current_user not in ('postgres', 'supabase_admin', 'service_role') then
     new.kind := old.kind;
     new.company_id := old.company_id;
     new.partner_id := old.partner_id;
@@ -304,7 +330,8 @@ declare
   meta jsonb;
 begin
   select * into d from public.documents where id = p_document_id for update;
-  if uid is null or not found or d.uploaded_by is distinct from uid or d.deleted_at is not null or d.storage_path is null then
+  if uid is null or not found or d.uploaded_by is distinct from uid or d.deleted_at is not null or d.storage_path is null
+     or not private.can_access_scope(d.kind, d.company_id, d.partner_id) then
     raise exception 'document not found' using errcode = '42501';
   end if;
   if d.uploaded_at is not null then
@@ -358,7 +385,7 @@ begin
   perform private.call_message_emails(jsonb_build_object('mode', 'document', 'document_id', d.id));
 end $$;
 
--- 9. Document notices read: staff for one segnalatore (anyone reads for the team), a segnalatore their own -------------------------
+-- 9. Document notices read: staff for one segnalatore or all (anyone reads for the team), a segnalatore their own --------------
 create function public.mark_documents_read(p_partner_id uuid default null) returns void
 language plpgsql security definer set search_path = '' as $$
 declare
@@ -371,7 +398,7 @@ begin
     update public.notifications n set read_at = clock_timestamp()
       from public.documents d
      where n.document_id = d.id and n.kind = 'document' and n.read_at is null
-       and d.partner_id = p_partner_id
+       and (p_partner_id is null or d.partner_id = p_partner_id)
        and exists (select 1 from public.profiles p where p.id = n.recipient_id and p.role = 'staff');
   else
     update public.notifications set read_at = clock_timestamp()
@@ -407,6 +434,8 @@ language sql stable security definer set search_path = '' as $$
      and d.deleted_at is null
      and (p_partner_id is null or d.partner_id = p_partner_id)
      and (d.uploaded_at is not null or d.uploaded_by = me.uid)
+     and (me.staff or (d.shared and exists (select 1 from public.partner_members pm
+                                             where pm.partner_id = d.partner_id and pm.profile_id = me.uid)))
      and private.can_see_document(d.kind, d.company_id, d.partner_id, d.shared, d.deleted_at, d.message_id,
                                   d.uploaded_at, d.uploaded_by)
    order by d.created_at desc, d.id;

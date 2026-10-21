@@ -6,6 +6,9 @@ do $$
 declare
   org      uuid := (select id from public.organizations limit 1);
   u_s1     uuid := gen_random_uuid();  -- staff
+  u_s2     uuid := gen_random_uuid();  -- another colleague
+  comp     uuid;
+  d_p      uuid;   -- A's second upload, left in progress
   u_ref    uuid := gen_random_uuid();  -- segnalatore A
   u_ref2   uuid := gen_random_uuid();  -- segnalatore B
   p_ref    uuid;
@@ -33,10 +36,13 @@ declare
 begin
   insert into auth.users (id, email, aud, role) values
     (u_s1,   't6-s1@example.test',   'authenticated', 'authenticated'),
+    (u_s2,   't6-s2@example.test',   'authenticated', 'authenticated'),
     (u_ref,  't6-ref@example.test',  'authenticated', 'authenticated'),
     (u_ref2, 't6-ref2@example.test', 'authenticated', 'authenticated');
   update public.profiles set role = 'staff', staff_role = 'manager', name_first = 'Uno', name_last = 'Test' where id = u_s1;
+  update public.profiles set role = 'staff', staff_role = 'manager', name_first = 'Due', name_last = 'Test' where id = u_s2;
   update public.profiles set role = 'partner' where id in (u_ref, u_ref2);
+  insert into public.companies (name, zite_azienda_id, organization_id) values ('T6 company', 't6-company', org) returning id into comp;
   insert into public.partners (zite_segnalatore_id, name, email, organization_id)
     values ('t6-ref', 'Test referrer 6', 't6-ref@example.test', org) returning id into p_ref;
   insert into public.partners (zite_segnalatore_id, name, email, organization_id)
@@ -76,6 +82,23 @@ begin
   report := report || format(E'%s the author sees the upload in progress (expect 1, got %s)\n', case when ok then 'PASS' else 'FAIL' end, n);
   ok := private.can_upload_document_path(path); failures := failures + (not ok)::int;
   report := report || format(E'%s the author may upload to that path\n', case when ok then 'PASS' else 'FAIL' end);
+
+  insert into public.documents (kind, partner_id, company_id, title) values ('partner', p_ref, comp, 'secondo.pdf') returning id into d_p;
+  select company_id into r from public.documents where id = d_p;
+  ok := r.company_id is null; failures := failures + (not ok)::int;
+  report := report || format(E'%s a segnalatore''s document cannot name a company\n', case when ok then 'PASS' else 'FAIL' end);
+  begin
+    insert into storage.objects (bucket_id, name) select 'documents', storage_path from public.documents where id = d_p;
+    ok := true;
+  exception when others then ok := false; end;
+  failures := failures + (not ok)::int;
+  report := report || format(E'%s Storage lets the author upload to own path in progress\n', case when ok then 'PASS' else 'FAIL' end);
+  begin
+    insert into storage.objects (bucket_id, name) values ('documents', 'partner/' || p_ref || '/invented/x.pdf');
+    ok := false;
+  exception when others then ok := true; end;
+  failures := failures + (not ok)::int;
+  report := report || format(E'%s Storage refuses a path the database did not make\n', case when ok then 'PASS' else 'FAIL' end);
 
   begin
     perform public.confirm_document_upload(d_file);
@@ -195,6 +218,16 @@ begin
   failures := failures + (not ok)::int;
   report := report || format(E'%s a staff edit changes the title but never scope or path\n', case when ok then 'PASS' else 'FAIL' end);
 
+  update public.documents set uploaded_at = now(), size_bytes = 5 where id = d_v2;
+  select * into r from public.documents where id = d_v2;
+  ok := r.uploaded_at is null and r.size_bytes is null; failures := failures + (not ok)::int;
+  report := report || format(E'%s a staff edit cannot fake an upload\n', case when ok then 'PASS' else 'FAIL' end);
+
+  update public.documents set shared = true where id = d_int;
+  select shared into r from public.documents where id = d_int;
+  ok := not r.shared; failures := failures + (not ok)::int;
+  report := report || format(E'%s a file on an internal note cannot be shared later\n', case when ok then 'PASS' else 'FAIL' end);
+
   begin
     perform public.notify_document(d_gem);
     ok := false;
@@ -220,6 +253,14 @@ begin
   select count(*) into n from public.documents where id = d_gem and notified_at is not null;
   ok := n = 1; failures := failures + (not ok)::int;
   report := report || format(E'%s and records when\n', case when ok then 'PASS' else 'FAIL' end);
+
+  -- another colleague does not see s1's uploads in progress
+  perform set_config('request.jwt.claims', json_build_object('sub', u_s2, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  select count(*) into n from public.partner_documents(p_ref) where id in (d_v2, d_v3);
+  ok := n = 0; failures := failures + (not ok)::int;
+  report := report || format(E'%s staff do not list a colleague''s uploads in progress (expect 0, got %s)\n', case when ok then 'PASS' else 'FAIL' end, n);
+  reset role;
 
   ---------------------------------------------------------------- what A sees, and B
   perform set_config('request.jwt.claims', json_build_object('sub', u_ref, 'role', 'authenticated')::text, true);
@@ -257,6 +298,21 @@ begin
   select count(*) into n from public.notifications where document_id = d_link and read_at is null;
   ok := n = 0; failures := failures + (not ok)::int;
   report := report || format(E'%s and its bell entries are cleared (expect 0, got %s)\n', case when ok then 'PASS' else 'FAIL' end, n);
+
+  -- Gemina hides A's message: its file disappears for A, and nothing more can be attached to it
+  update public.messages set deleted_at = now() where id = m_ref;
+  perform set_config('request.jwt.claims', json_build_object('sub', u_ref, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  select count(*) into n from public.partner_documents() where id = d_msg;
+  ok := n = 0; failures := failures + (not ok)::int;
+  report := report || format(E'%s a file on a hidden message is hidden too (expect 0, got %s)\n', case when ok then 'PASS' else 'FAIL' end, n);
+  begin
+    insert into public.documents (kind, partner_id, title, message_id) values ('partner', p_ref, 'tardi.pdf', m_ref);
+    ok := false;
+  exception when others then ok := true; end;
+  failures := failures + (not ok)::int;
+  report := report || format(E'%s nothing can be attached to a hidden message\n', case when ok then 'PASS' else 'FAIL' end);
+  reset role;
 
   perform set_config('request.jwt.claims', json_build_object('sub', u_ref2, 'role', 'authenticated')::text, true);
   set local role authenticated;
