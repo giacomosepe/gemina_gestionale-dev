@@ -165,7 +165,7 @@ create table public.reminders (
   recipients      text[] not null check (cardinality(recipients) between 1 and 20 and array_position(recipients, null) is null),
   -- the pratica is closed (set by the Gestionale): nothing is sent
   closed          boolean not null default false,
-  created_by      uuid default (select auth.uid()) references public.profiles(id) on delete set null,
+  created_by      uuid default auth.uid() references public.profiles(id) on delete set null,
   created_at      timestamptz not null default now(),
   updated_at      timestamptz not null default now(),
   unique (zite_pratica_id, date_key)
