@@ -1,4 +1,4 @@
-// portal-bridge (v6)
+// portal-bridge (v7)
 // Lets Zite endpoints use Supabase on behalf of the person logged in to Zite.
 //
 // Trust model:
@@ -32,6 +32,8 @@
 // conversation with the colleague they chose (the portal's Zite endpoint has checked colleague, pratica and azienda). Referrers
 // can no longer create conversations directly. mark_read uses public.mark_conversation_read (read by anyone at Gemina = read
 // for the team; reading does not make a colleague take part). list_conversations counts unread from the per-side read times.
+// 2026-10-21 (v7, migration 20261021154703): action post_automatic_message (staff secret): the Gestionale's automatic notices
+// to a segnalatore, signed Gemina Advisory.
 
 import postgres from "npm:postgres@3.4.5";
 import { createClient } from "npm:@supabase/supabase-js@2.50.0";
@@ -251,6 +253,42 @@ async function notify(audience: Audience, p: Record<string, unknown>) {
   return { created: rows.length };
 }
 
+// An automatic message from Gemina Advisory to a segnalatore (staff secret only, server to server like notify): the
+// Gestionale's own notices ("Segnalazione approvata", "Provvigione maturata"), often with nobody logged in. Signed by
+// nobody (messages.automatic, migration 20261021154703): the database gives the segnalatore the bell and asks for no email,
+// because the Zite endpoint sends its own. Same subject = same conversation, as everywhere else.
+async function postAutomaticMessage(audience: Audience, p: Record<string, unknown>) {
+  if (audience !== "staff") throw new BridgeError(403, "staff_only");
+  const ziteId = text(p.zite_segnalatore_id, "zite_segnalatore_id", 100);
+  const title = text(p.title, "title", 200).replace(/\s+/g, " ");
+  const body = text(p.body, "body", 10000);
+  const azienda = optText(p.zite_azienda_id, "zite_azienda_id", 100);
+  const pratica = optText(p.zite_pratica_id, "zite_pratica_id", 100);
+  const provvigione = optText(p.zite_provvigione_id, "zite_provvigione_id", 100);
+  return await sql.begin(async (tx) => {
+    const [pa] = await tx`select id, archived from public.partners where zite_segnalatore_id = ${ziteId}`;
+    if (!pa) throw new BridgeError(404, "partner_not_found");
+    if (pa.archived) return { skipped: "archived" };
+    const [c] = await tx`
+      insert into public.conversations (kind, title, partner_id, created_by, zite_azienda_id, zite_pratica_id, zite_provvigione_id)
+      values ('partner', ${title}, ${pa.id}, null, ${azienda}, ${pratica}, ${provvigione})
+      on conflict (partner_id, (lower(btrim(title)))) where kind = 'partner'
+      do update set title = public.conversations.title
+      returning id`;
+    // The same notice twice in a short time (a retried sync or request): written once.
+    const [dup] = await tx`
+      select id from public.messages
+       where conversation_id = ${c.id} and automatic and body = ${body} and created_at > now() - interval '10 minutes'
+       limit 1`;
+    if (dup) return { conversation_id: c.id, message_id: dup.id, duplicate: true };
+    const [m] = await tx`
+      insert into public.messages (conversation_id, sender_id, body, automatic)
+      values (${c.id}, null, ${body}, true)
+      returning id`;
+    return { conversation_id: c.id, message_id: m.id };
+  });
+}
+
 // A segnalatore was created, edited, archived or deleted in the Gestionale (staff secret only): the Supabase
 // referrer record follows, by Zite id. Deleting = archived (the record and its history stay; access ends at the
 // person's next portal call, as the bridge checks partners.email and archived).
@@ -389,6 +427,7 @@ const actions: Record<string, Handler> = {
              (select count(*)::int from public.messages m
                where m.conversation_id = c.id
                  and m.sender_id is distinct from ${userId}
+                 and not (m.automatic and private.is_staff())
                  and m.created_at > coalesce(case when private.is_staff() then c.staff_read_at else c.partner_read_at end,
                                              'epoch'::timestamptz)) as unread
         from public.conversations c
@@ -516,6 +555,7 @@ Deno.serve(async (req) => {
     if (payload.action === "notify") return reply(200, { ok: true, data: await notify(audience, payload) });
     // sync_partner too: the Gestionale's server telling Supabase about a segnalatore record.
     if (payload.action === "sync_partner") return reply(200, { ok: true, data: await syncPartner(audience, payload) });
+    if (payload.action === "post_automatic_message") return reply(200, { ok: true, data: await postAutomaticMessage(audience, payload) });
     if (payload.action === "archive_missing_partners") return reply(200, { ok: true, data: await archiveMissingPartners(audience, payload) });
 
     const email = String(payload.email ?? "").trim().toLowerCase();

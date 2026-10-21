@@ -58,6 +58,9 @@ It is the structure of production on 2026-10-19, read from its catalog (producti
   `public.notify_document()` ("Notifica segnalatore": bell + email, message-emails mode `document`),
   `public.mark_documents_read()`. A segnalatore's file outside a message → team bell (kind `document`) and the team email
   after 15 minutes, like messages.
+- Automatic messages (migration 20261021154703): `messages.automatic` = a message signed Gemina Advisory with no sender, written
+  only by the bridge (v7 action `post_automatic_message`, staff secret) for the Gestionale's own notices; only the segnalatore
+  gets a bell, no Supabase email (Zite sends its own). "Notifica segnalatore" ignores a second press within a minute.
 - Security advisor, expected warnings: leaked-password protection; `authenticated_security_definer_function_executable` for
   `mark_conversation_read`, `partner_threads`, `staff_colleagues`, `confirm_document_upload`, `remove_document`,
   `notify_document`, `mark_documents_read`, `partner_documents` (meant to be called by signed-in users; each checks the

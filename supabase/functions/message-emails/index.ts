@@ -1,4 +1,4 @@
-// message-emails (v1, step 6, 2026-10-21)
+// message-emails (v2, steps 6 and 7, 2026-10-21)
 // Emails about referrer (segnalatore) messages, sent by Supabase + Resend instead of Zite (0 Zite runs).
 // Called only by the database (migration 20261021133651): the trigger on messages (mode "message", one conversation,
 // right after Gemina writes) and pg_cron every 5 minutes (mode "sweep"). The call carries the internal secret the
@@ -10,6 +10,10 @@
 //   conversation (never the text), a button to the portal. Replies by email are not invited (reply-to stays partners@).
 // - To the team: a message notification still unread by anyone at Gemina after 15 minutes: one email per person per run,
 //   listing the subjects (never the text). Never for kind 'event' (Zite emails those).
+// - Documents (step 7, migration 20261021145534): "Notifica segnalatore" (public.notify_document) calls mode "document": one
+//   email to the referrer with the document's name (never its content) and a button to the portal. A file the referrer
+//   shares outside a message gives the team a bell (kind 'document'): unread by anyone at Gemina after 15 minutes, it joins
+//   the same team email as the messages.
 // - Real referrer addresses only where the project allows them (PARTNER_EMAILS_REAL=true in production,
 //   DEV_TEST_PARTNER_EMAILS in dev), as the bridge. Placeholders (@example.test) never.
 // - Each conversation/notification is claimed in the database before sending; if Resend fails it is released, so the
@@ -157,7 +161,7 @@ async function referrerEmails(conversationId: string | null): Promise<number> {
 // To the team: message notifications unread by anyone at Gemina after 15 minutes (the last 2 days only)
 // ---------------------------------------------------------------------------------------------------------------------------
 async function teamEmails(): Promise<number> {
-  const due = await sql`
+  const messages = await sql`
     with cand as (
       select n.id
         from public.notifications n
@@ -173,24 +177,42 @@ async function teamEmails(): Promise<number> {
       from cand, public.conversations c, public.partners pa, public.profiles r
      where n.id = cand.id and c.id = n.conversation_id and pa.id = c.partner_id and r.id = n.recipient_id
     returning n.id, r.email, r.name_first, c.title, pa.name as partner`;
+  // Files a referrer shared outside a message (step 7), same rules; a hidden document is not announced.
+  const documents = await sql`
+    with cand as (
+      select n.id
+        from public.notifications n
+        join public.documents d on d.id = n.document_id
+        join public.profiles r on r.id = n.recipient_id and r.role = 'staff'
+       where n.kind = 'document' and n.read_at is null and n.emailed_at is null
+         and n.created_at < now() - interval '15 minutes'
+         and n.created_at > now() - interval '2 days'
+         and d.kind = 'partner' and d.deleted_at is null and not d.from_gemina
+       for update of n skip locked)
+    update public.notifications n set emailed_at = now()
+      from cand, public.documents d, public.partners pa, public.profiles r
+     where n.id = cand.id and d.id = n.document_id and pa.id = d.partner_id and r.id = n.recipient_id
+    returning n.id, r.email, r.name_first, d.title, pa.name as partner`;
 
   const perPerson = new Map<string, { nome: string | null; ids: string[]; righe: Set<string> }>();
-  for (const d of due) {
-    if (!d.email || !EMAIL.test(d.email)) continue;
+  const add = (d: { id: string; email: string | null; name_first: string | null; title: string; partner: string | null }, prefix: string) => {
+    if (!d.email || !EMAIL.test(d.email)) return;
     const p = perPerson.get(d.email) ?? { nome: d.name_first, ids: [], righe: new Set<string>() };
     p.ids.push(d.id);
-    p.righe.add(`${oneLine(d.partner ?? "Segnalatore", 60)}: ${oneLine(d.title, 120)}`);
+    p.righe.add(`${oneLine(d.partner ?? "Segnalatore", 60)}: ${prefix}${oneLine(d.title, 120)}`);
     perPerson.set(d.email, p);
-  }
+  };
+  for (const d of messages) add(d as never, "");
+  for (const d of documents) add(d as never, "documento ");
 
   let sent = 0;
   for (const [email, p] of perPerson) {
     const n = p.righe.size;
     const ok = await send({
       from: FROM_TEAM, to: email,
-      subject: n === 1 ? "Un messaggio da un segnalatore aspetta una risposta" : `${n} messaggi dai segnalatori aspettano una risposta`,
+      subject: n === 1 ? "Una novità da un segnalatore aspetta una risposta" : `${n} novità dai segnalatori aspettano una risposta`,
       email: {
-        titolo: n === 1 ? "Un messaggio non ancora letto" : `${n} messaggi non ancora letti`,
+        titolo: n === 1 ? "Una novità non ancora letta" : `${n} novità non ancora lette`,
         paragrafi: [`${p.nome ? `Ciao ${p.nome}, ` : ""}da più di 15 minuti nessuno di Gemina ha letto:`],
         elenco: [...p.righe],
         pulsante: { etichetta: "Apri il Gestionale", url: URL_GESTIONALE },
@@ -204,6 +226,30 @@ async function teamEmails(): Promise<number> {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
+// "Notifica segnalatore": one Gemina document announced to its referrer (the database has checked staff and document)
+// ---------------------------------------------------------------------------------------------------------------------------
+async function documentEmail(documentId: string): Promise<number> {
+  const [d] = await sql`
+    select d.title, pa.email, pa.archived
+      from public.documents d join public.partners pa on pa.id = d.partner_id
+     where d.id = ${documentId}::uuid and d.kind = 'partner' and d.from_gemina and d.shared
+       and d.deleted_at is null and d.uploaded_at is not null and d.message_id is null
+       and d.notified_at > now() - interval '5 minutes'`;
+  if (!d || d.archived || !referrerAddressAllowed(d.email)) return 0;
+  const ok = await send({
+    from: FROM_REFERRER, to: d.email, replyTo: REPLY_TO_REFERRER,
+    subject: `Nuovo documento da Gemina Advisory: ${oneLine(d.title, 120)}`,
+    email: {
+      titolo: "Gemina Advisory ha condiviso un documento con te",
+      paragrafi: [`Documento: ${oneLine(d.title, 200)}`, "Lo trovi nel portale, in Messaggi e documenti."],
+      pulsante: { etichetta: "Apri il portale", url: `${URL_PORTALE}/#/messaggi` },
+      piede: "Messaggio automatico di Gemina Advisory: per rispondere usa il portale.",
+    },
+  });
+  return ok ? 1 : 0;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
 Deno.serve(async (req) => {
   if (req.method !== "POST") return reply(405, { ok: false, error: "method_not_allowed" });
   if (!RESEND_API_KEY) return reply(500, { ok: false, error: "resend_not_configured" });
@@ -211,13 +257,17 @@ Deno.serve(async (req) => {
   if (!s?.decrypted_secret || !safeEqual(req.headers.get("x-email-secret") ?? "", s.decrypted_secret)) {
     return reply(401, { ok: false, error: "unauthorized" });
   }
-  let body: { mode?: string; conversation_id?: string | null };
+  let body: { mode?: string; conversation_id?: string | null; document_id?: string | null };
   try { body = await req.json(); } catch { return reply(400, { ok: false, error: "invalid_json" }); }
 
   try {
     if (body.mode === "message") {
       if (typeof body.conversation_id !== "string") return reply(400, { ok: false, error: "conversation_id_required" });
       return reply(200, { ok: true, referrer: await referrerEmails(body.conversation_id) });
+    }
+    if (body.mode === "document") {
+      if (typeof body.document_id !== "string") return reply(400, { ok: false, error: "document_id_required" });
+      return reply(200, { ok: true, referrer: await documentEmail(body.document_id) });
     }
     if (body.mode === "sweep") {
       const [referrer, team] = [await referrerEmails(null), await teamEmails()];
