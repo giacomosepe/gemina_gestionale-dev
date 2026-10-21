@@ -51,7 +51,15 @@ It is the structure of production on 2026-10-19, read from its catalog (producti
   email is requested. Edge Function secret `RESEND_API_KEY` (Giacomo, dashboard).
 - History import of Zite messages: in one transaction with `select set_config('gemina.import', 'on', true)` and no user;
   never set it session-wide.
+- Referrer documents (step 7, migration 20261021145534): files and links between Gemina and the segnalatori in
+  `public.documents` and the private bucket `documents`. The browser creates the row (the server makes the path
+  `partner/<partner>/<document>/<name>` and checks the scope), uploads with its own login, then calls
+  `public.confirm_document_upload()`. Also `public.partner_documents()`, `public.remove_document()` (hides, the file stays),
+  `public.notify_document()` ("Notifica segnalatore": bell + email, message-emails mode `document`),
+  `public.mark_documents_read()`. A segnalatore's file outside a message → team bell (kind `document`) and the team email
+  after 15 minutes, like messages.
 - Security advisor, expected warnings: leaked-password protection; `authenticated_security_definer_function_executable` for
-  `mark_conversation_read`, `partner_threads`, `staff_colleagues` (meant to be called by signed-in users; each checks the
+  `mark_conversation_read`, `partner_threads`, `staff_colleagues`, `confirm_document_upload`, `remove_document`,
+  `notify_document`, `mark_documents_read`, `partner_documents` (meant to be called by signed-in users; each checks the
   caller inside).
 - Later: token hook, MFA.

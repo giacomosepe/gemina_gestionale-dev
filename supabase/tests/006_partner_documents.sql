@@ -1,4 +1,4 @@
--- Documents between Gemina and the segnalatori (migration 20261021150000). Same pattern as 001-005: one DO block, everything
+-- Documents between Gemina and the segnalatori (migration 20261021145534). Same pattern as 001-005: one DO block, everything
 -- rolled back by the final RAISE; the message is the report. A file reaching Storage is mirrored by the owner inserting the
 -- storage.objects row (what the Storage API does after its own upload check).
 
