@@ -152,13 +152,14 @@ begin
   failures := failures + (not ok)::int;
   report := report || format(E'%s A can write and mark read in own conversation\n', case when ok then 'PASS' else 'FAIL' end);
 
+  -- Since 20261021140000 a referrer starts a conversation only through the bridge (the portal checks colleague and pratica).
   begin
     insert into public.conversations (kind, title, partner_id, created_by) values ('partner', 'A new thread', p_a, u_ref_a);
-    ok := true;
-  exception when others then ok := false;
+    ok := false;
+  exception when others then ok := true;
   end;
   failures := failures + (not ok)::int;
-  report := report || format(E'%s A can start a conversation in own scope\n', case when ok then 'PASS' else 'FAIL' end);
+  report := report || format(E'%s A cannot start a conversation from a browser, even in own scope (bridge only)\n', case when ok then 'PASS' else 'FAIL' end);
   reset role;
 
   ---------------------------------------------------------------- user with no memberships
