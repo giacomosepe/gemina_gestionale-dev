@@ -152,7 +152,7 @@ begin
   failures := failures + (not ok)::int;
   report := report || format(E'%s A can write and mark read in own conversation\n', case when ok then 'PASS' else 'FAIL' end);
 
-  -- Since 20261021140000 a referrer starts a conversation only through the bridge (the portal checks colleague and pratica).
+  -- Since 20261021133651 a referrer starts a conversation only through the bridge (the portal checks colleague and pratica).
   begin
     insert into public.conversations (kind, title, partner_id, created_by) values ('partner', 'A new thread', p_a, u_ref_a);
     ok := false;

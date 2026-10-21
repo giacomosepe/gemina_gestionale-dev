@@ -1,6 +1,6 @@
 // message-emails (v1, step 6, 2026-10-21)
 // Emails about referrer (segnalatore) messages, sent by Supabase + Resend instead of Zite (0 Zite runs).
-// Called only by the database (migration 20261021140000): the trigger on messages (mode "message", one conversation,
+// Called only by the database (migration 20261021133651): the trigger on messages (mode "message", one conversation,
 // right after Gemina writes) and pg_cron every 5 minutes (mode "sweep"). The call carries the internal secret the
 // database keeps in Vault ('message_emails_secret'); nothing else can make it send.
 //

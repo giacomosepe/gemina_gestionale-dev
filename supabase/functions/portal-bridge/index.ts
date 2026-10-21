@@ -28,7 +28,7 @@
 // 2026-10-20 (v5): action sync_partner (staff secret): segnalatori created/edited/archived/deleted in Zite
 // update public.partners; real emails only with PARTNER_EMAILS_REAL=true or DEV_TEST_PARTNER_EMAILS. Archiving or an
 // email change drops portal memberships at once; archive_missing_partners repairs lost deletes.
-// 2026-10-21 (v6, step 6, migration 20261021140000): action start_partner_conversation (portal secret): a referrer starts a
+// 2026-10-21 (v6, step 6, migration 20261021133651): action start_partner_conversation (portal secret): a referrer starts a
 // conversation with the colleague they chose (the portal's Zite endpoint has checked colleague, pratica and azienda). Referrers
 // can no longer create conversations directly. mark_read uses public.mark_conversation_read (read by anyone at Gemina = read
 // for the team; reading does not make a colleague take part). list_conversations counts unread from the per-side read times.

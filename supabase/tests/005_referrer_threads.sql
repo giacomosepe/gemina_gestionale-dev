@@ -1,4 +1,4 @@
--- Referrer threads (migration 20261021140000). Same pattern as 001-004: one DO block, everything rolled back by the final
+-- Referrer threads (migration 20261021133651). Same pattern as 001-004: one DO block, everything rolled back by the final
 -- RAISE; the message is the report. What the bridge does with full rights (start_partner_conversation) is mirrored as
 -- plain inserts by the owner.
 
@@ -229,7 +229,9 @@ begin
   perform set_config('gemina.import', 'on', true);
   insert into public.messages (conversation_id, sender_id, body, created_at, zite_messaggio_id)
     values (conv2, u_s3, 'dal passato', now() - interval '7 days', 'zite-msg-t5') returning id into m_imp;
-  perform set_config('gemina.import', '', true);
+  select count(*) into n from public.messages where id = m_imp and created_at < now() - interval '6 days' and zite_messaggio_id = 'zite-msg-t5';
+  ok := n = 1; failures := failures + (not ok)::int;
+  report := report || format(E'%s an imported message keeps its original time and Zite id (expect 1, got %s)\n', case when ok then 'PASS' else 'FAIL' end, n);
   select count(*) into n from public.notifications where message_id = m_imp;
   ok := n = 0; failures := failures + (not ok)::int;
   report := report || format(E'%s an imported message notifies nobody (expect 0, got %s)\n', case when ok then 'PASS' else 'FAIL' end, n);
@@ -242,6 +244,7 @@ begin
   exception when unique_violation then ok := true; end;
   failures := failures + (not ok)::int;
   report := report || format(E'%s the same Zite message cannot be copied twice\n', case when ok then 'PASS' else 'FAIL' end);
+  perform set_config('gemina.import', '', true);
 
   -- the import mode is ignored for a logged-in user
   perform set_config('request.jwt.claims', json_build_object('sub', u_s3, 'role', 'authenticated')::text, true);
