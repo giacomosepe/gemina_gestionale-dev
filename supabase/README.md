@@ -5,10 +5,11 @@ Plan: `piano-database-supabase.md` (v0.3) and the review `claude/2026-10-19-veri
 ## Projects
 | | Project | Ref | Region | Who touches it |
 |---|---|---|---|---|
-| Dev | Gestionale Gemina Advisory EU (org "Gemina Advisory dev", free plan) | gsnmtfugfhhrutmlvhzt | eu-central-1 | Claude; test data only (real aziende names, referrer emails replaced) |
-| Production | not created yet (Pro, Frankfurt) | — | eu-central-1 | Giacomo creates it from these files; no chat connected |
+| Production | Gestionale Gemina Advisory EU (org "Gemina Advisory Production", free plan for now) | gsnmtfugfhhrutmlvhzt | eu-central-1 | Claude connected while only the test group uses it (CLAUDE.md rule 3); real data |
+| Dev | not created yet: a new organization and project built from these files | — | eu-central-1 | Claude; test data only |
 
-(Until 2026-10-19 this table listed gsnmtfugfhhrutmlvhzt as production and an older tzbssapqpdtjljtphsiy as dev. gsnmtfugfhhrutmlvhzt became dev that evening; production will be a new, clean project.)
+(History: until 2026-10-19 gsnmtfugfhhrutmlvhzt was production, then dev; on 2026-10-21 Giacomo made it production again for the go-live of
+messages and files with segnalatori (Secret `PARTNER_EMAILS_REAL=true`, real emails synced, Zite history copied). The new dev comes next.)
 
 ## Words
 - **staff** = Gemina's team, mirrors the Zite table Ruoli (Amministratore → `admin`, Manager → `manager`). `former_staff` = left the team: no access, profile kept for history.
@@ -21,11 +22,12 @@ Plan: `piano-database-supabase.md` (v0.3) and the review `claude/2026-10-19-veri
 
 ## Baseline (20261019180000_baseline_from_production.sql)
 It is the structure of production on 2026-10-19, read from its catalog (production had changes applied outside recorded migrations).
-- **Production (new, clean project):** apply every file in `migrations/` in order, baseline first, nothing skipped.
-- **Dev (gsnmtfugfhhrutmlvhzt):** this is the project the baseline was read from, so it already had the baseline's
-  structure; its history also lists 5 older migrations from before the baseline. Nothing to do there.
-- (Until 2026-10-20 this section said to mark the baseline as applied on production: that was for the old plan in
-  which gsnmtfugfhhrutmlvhzt was production. Ignore it.)
+- **New dev (clean project):** apply every file in `migrations/` in order, baseline first, nothing skipped.
+- **Production (gsnmtfugfhhrutmlvhzt):** this is the project the baseline was read from, so it already had the baseline's
+  structure; its history also lists 5 older migrations from before the baseline (20261018205825, 20261018205919,
+  20261018210324, 20261019133832, 20261019140452). Before using the Supabase CLI on it (`supabase db push`), mark them:
+  `supabase migration repair --status reverted 20261018205825 20261018205919 20261018210324 20261019133832 20261019140452`
+  (it only edits the history list, not the schema).
 
 ## Settings that are not SQL (set once per project)
 - Auth: sign-ups disabled; site URL and redirect URLs; leaked-password protection or password sign-in off.
