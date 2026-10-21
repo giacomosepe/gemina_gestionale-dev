@@ -10,6 +10,8 @@
 //   conversation (never the text), a button to the portal. Replies by email are not invited (reply-to stays partners@).
 // - To the team: a message notification still unread by anyone at Gemina after 15 minutes: one email per person per run,
 //   listing the subjects (never the text). Never for kind 'event' (Zite emails those).
+// - Reminders (migration 20261022001100): the hourly job private.send_due_reminders() calls mode "reminders" after writing the
+//   morning's bells; each colleague gets one email listing them.
 // - Documents (step 7, migration 20261021145534): "Notifica segnalatore" (public.notify_document) calls mode "document": one
 //   email to the referrer with the document's name (never its content) and a button to the portal. A file the referrer
 //   shares outside a message gives the team a bell (kind 'document'): unread by anyone at Gemina after 15 minutes, it joins
@@ -250,6 +252,51 @@ async function documentEmail(documentId: string): Promise<number> {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
+// Reminders of pratica dates (migration 20261022001100): the bells written this morning by private.send_due_reminders(), one
+// email per colleague listing them. Claimed with emailed_at like the other emails; a failed send is released for the next run.
+// ---------------------------------------------------------------------------------------------------------------------------
+async function reminderEmails(): Promise<number> {
+  const rows = await sql`
+    with cand as (
+      select n.id
+        from public.notifications n
+        join public.profiles r on r.id = n.recipient_id and r.role = 'staff'
+       where n.kind = 'event' and n.event = 'promemoria' and n.emailed_at is null
+         and n.created_at > now() - interval '1 day'
+       for update of n skip locked)
+    update public.notifications n set emailed_at = now()
+      from cand, public.profiles r
+     where n.id = cand.id and r.id = n.recipient_id
+    returning n.id, r.email, r.name_first, n.label`;
+  const perPerson = new Map<string, { nome: string | null; ids: string[]; righe: string[] }>();
+  for (const d of rows as unknown as { id: string; email: string | null; name_first: string | null; label: string }[]) {
+    if (!d.email || !EMAIL.test(d.email)) continue;
+    const p = perPerson.get(d.email) ?? { nome: d.name_first, ids: [], righe: [] };
+    p.ids.push(d.id);
+    p.righe.push(oneLine(d.label.replace(/^Promemoria: /, ""), 200));
+    perPerson.set(d.email, p);
+  }
+  let sent = 0;
+  for (const [email, p] of perPerson) {
+    const n = p.righe.length;
+    const ok = await send({
+      from: FROM_TEAM, to: email,
+      subject: n === 1 ? `Promemoria: ${oneLine(p.righe[0]!, 120)}` : `${n} promemoria per oggi`,
+      email: {
+        titolo: n === 1 ? "Un promemoria per oggi" : `${n} promemoria per oggi`,
+        paragrafi: [`${p.nome ? `Ciao ${p.nome}, ` : ""}${n === 1 ? "ecco la data in arrivo:" : "ecco le date in arrivo:"}`],
+        elenco: p.righe,
+        pulsante: { etichetta: "Apri il Gestionale", url: URL_GESTIONALE },
+        piede: "Messaggio automatico: i promemoria si cambiano sulla data, nel pannello della pratica.",
+      },
+    });
+    if (ok) sent++;
+    else await sql`update public.notifications set emailed_at = null where id = any(${p.ids}::uuid[])`;
+  }
+  return sent;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
 Deno.serve(async (req) => {
   if (req.method !== "POST") return reply(405, { ok: false, error: "method_not_allowed" });
   if (!RESEND_API_KEY) return reply(500, { ok: false, error: "resend_not_configured" });
@@ -268,6 +315,9 @@ Deno.serve(async (req) => {
     if (body.mode === "document") {
       if (typeof body.document_id !== "string") return reply(400, { ok: false, error: "document_id_required" });
       return reply(200, { ok: true, referrer: await documentEmail(body.document_id) });
+    }
+    if (body.mode === "reminders") {
+      return reply(200, { ok: true, team: await reminderEmails() });
     }
     if (body.mode === "sweep") {
       const [referrer, team] = [await referrerEmails(null), await teamEmails()];
