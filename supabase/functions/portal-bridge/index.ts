@@ -32,7 +32,7 @@
 // conversation with the colleague they chose (the portal's Zite endpoint has checked colleague, pratica and azienda). Referrers
 // can no longer create conversations directly. mark_read uses public.mark_conversation_read (read by anyone at Gemina = read
 // for the team; reading does not make a colleague take part). list_conversations counts unread from the per-side read times.
-// 2026-10-21 (v7, migration 20261021154703): action post_automatic_message (staff secret): the Gestionale's automatic notices
+// 2026-10-21 (v7, migration 20261021155543): action post_automatic_message (staff secret): the Gestionale's automatic notices
 // to a segnalatore, signed Gemina Advisory.
 
 import postgres from "npm:postgres@3.4.5";
@@ -255,7 +255,7 @@ async function notify(audience: Audience, p: Record<string, unknown>) {
 
 // An automatic message from Gemina Advisory to a segnalatore (staff secret only, server to server like notify): the
 // Gestionale's own notices ("Segnalazione approvata", "Provvigione maturata"), often with nobody logged in. Signed by
-// nobody (messages.automatic, migration 20261021154703): the database gives the segnalatore the bell and asks for no email,
+// nobody (messages.automatic, migration 20261021155543): the database gives the segnalatore the bell and asks for no email,
 // because the Zite endpoint sends its own. Same subject = same conversation, as everywhere else.
 async function postAutomaticMessage(audience: Audience, p: Record<string, unknown>) {
   if (audience !== "staff") throw new BridgeError(403, "staff_only");

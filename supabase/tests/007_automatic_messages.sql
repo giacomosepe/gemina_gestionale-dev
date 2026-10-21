@@ -1,4 +1,4 @@
--- Automatic messages from Gemina Advisory and the "Notifica segnalatore" repeat guard (migration 20261021154703). Same pattern
+-- Automatic messages from Gemina Advisory and the "Notifica segnalatore" repeat guard (migration 20261021155543). Same pattern
 -- as 001-006: one DO block, everything rolled back by the final RAISE; the message is the report. The bridge's insert is
 -- mirrored as a plain insert (full rights). Email requests are counted in pg_net's queue (nothing is sent: the queue is only
 -- read after commit, and this block never commits); a placeholder functions_url is stored for the test if none exists.
