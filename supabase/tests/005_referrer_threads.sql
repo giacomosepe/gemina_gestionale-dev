@@ -148,8 +148,9 @@ begin
   select count(*) into n from public.partner_threads(p_ref2);
   ok := n = 0; failures := failures + (not ok)::int;
   report := report || format(E'%s asking for another referrer returns nothing (expect 0, got %s)\n', case when ok then 'PASS' else 'FAIL' end, n);
-  select t.unread, t.last_from_gemina, array_to_string(t.colleagues, ', ') as nomi into r from public.partner_threads() t where t.id = conv;
-  ok := r.unread = 1 and r.last_from_gemina and r.nomi = 'Uno Test, Due Test'; failures := failures + (not ok)::int;
+  select t.unread, t.last_from_gemina, array_to_string(array(select x from unnest(t.colleagues) x order by x), ', ') as nomi
+    into r from public.partner_threads() t where t.id = conv;
+  ok := r.unread = 1 and r.last_from_gemina and r.nomi = 'Due Test, Uno Test'; failures := failures + (not ok)::int;
   report := report || format(E'%s the referrer: 1 unread (the internal note does not count), colleagues listed (unread %s, last from Gemina %s, %s)\n', case when ok then 'PASS' else 'FAIL' end, r.unread, r.last_from_gemina, r.nomi);
   select count(*) into n from public.notifications;
   ok := n = 1; failures := failures + (not ok)::int;
@@ -171,7 +172,18 @@ begin
   ok := n = 4; failures := failures + (not ok)::int;
   report := report || format(E'%s the referrer sees the team''s names for the picker (expect 4 test colleagues, got %s)\n', case when ok then 'PASS' else 'FAIL' end, n);
 
+  -- a browser cannot choose a message's time or Zite id
+  insert into public.messages (conversation_id, sender_id, body, created_at, zite_messaggio_id)
+    values (conv, u_ref, 'dal futuro', now() + interval '30 days', 'zite-rubato');
+  reset role;
+  select count(*) into n from public.messages
+   where conversation_id = conv and body = 'dal futuro' and created_at < now() + interval '1 minute' and zite_messaggio_id is null;
+  ok := n = 1; failures := failures + (not ok)::int;
+  report := report || format(E'%s a browser cannot set a message''s time or Zite id (expect 1 corrected, got %s)\n', case when ok then 'PASS' else 'FAIL' end, n);
+
   -- the referrer replies: both colleagues taking part are notified, nobody else
+  perform set_config('request.jwt.claims', json_build_object('sub', u_ref, 'role', 'authenticated')::text, true);
+  set local role authenticated;
   insert into public.messages (conversation_id, sender_id, body) values (conv, u_ref, 'grazie');
   reset role;
   select count(*) into n from public.notifications n2

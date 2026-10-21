@@ -17,9 +17,11 @@
 --    5 minutes for the rest (team after 15 minutes unread, referrer at most once per conversation every 10 minutes, never if read).
 --    The function address and an internal secret live in Vault (secret generated here, never written in a file). Until the
 --    address 'functions_url' is stored in Vault, nothing is called.
--- 7. History import: with `set local gemina.import = 'on'` and no logged-in user, the trigger records who took part but
---    sends no notification and asks for no email.
--- No DROP or DELETE (the connector Claude uses refuses them).
+-- 7. History import: with `select set_config('gemina.import', 'on', true)` (transaction only, never session-wide) and no
+--    logged-in user, the trigger records who took part but sends no notification and asks for no email.
+-- 8. A message's time and Zite id are set by the server (a browser cannot backdate, postdate or claim a Zite id), except
+--    in the import. Times use clock_timestamp(), so messages written in one transaction keep their order.
+-- Only additive or replacing statements (the connector Claude uses refuses destructive ones).
 
 -- 1. Extensions -----------------------------------------------------------------------------------------------------------------
 create extension if not exists pg_net with schema extensions;
@@ -39,7 +41,7 @@ comment on column public.conversations.partner_emailed_at is 'Last email to the 
 comment on table public.conversation_members is 'People taking part in a conversation: staff here get its notifications. last_read_at is legacy (read state is on conversations).';
 
 create index conversations_zite_azienda_id_idx on public.conversations (zite_azienda_id);
-create unique index conversations_partner_title_key on public.conversations (partner_id, lower(title)) where kind = 'partner';
+create unique index conversations_partner_title_key on public.conversations (partner_id, lower(btrim(title))) where kind = 'partner';
 
 alter table public.messages
   add column zite_messaggio_id text check (char_length(zite_messaggio_id) <= 100);
@@ -76,7 +78,24 @@ exception when others then
   raise warning 'request_message_emails: %', sqlerrm;
 end $$;
 
--- 5. Who gets notified, read state, email at once -----------------------------------------------------------------------------
+-- 5a. Server-set values on a new message ---------------------------------------------------------------------------------------
+-- Runs before the send limit (triggers fire in name order), so the limit counts the real time.
+create function private.messages_server_values() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if (select auth.uid()) is null and coalesce(current_setting('gemina.import', true), '') = 'on' then
+    return new;  -- history import: keeps the original time and Zite id
+  end if;
+  new.created_at := clock_timestamp();
+  new.zite_messaggio_id := null;
+  return new;
+end $$;
+
+create trigger messages_a_server_values
+  before insert on public.messages
+  for each row execute function private.messages_server_values();
+
+-- 5b. Who gets notified, read state, email at once ----------------------------------------------------------------------------
 -- Same rule as 20261019194605 (staff recipients = current staff taking part, minus the sender; if no current staff takes part
 -- and the sender is not staff, every staff member), plus: a link on each notification, the read state of the sender's side,
 -- the request for the referrer email, and the history import mode.
@@ -109,11 +128,21 @@ begin
     return new;  -- history copy: read state is set by the import itself, no notification, no email
   end if;
 
-  -- whoever writes has read the conversation, for their side
+  -- whoever writes has read the conversation for their side: read time and bell entries (before this message's own
+  -- notifications are created, so those stay unread)
   if sender_is_staff then
-    update public.conversations set staff_read_at = now() where id = c.id;
+    update public.conversations
+       set staff_read_at = greatest(coalesce(staff_read_at, '-infinity'::timestamptz), new.created_at)
+     where id = c.id;
+    update public.notifications n set read_at = clock_timestamp()
+     where n.conversation_id = c.id and n.kind = 'message' and n.read_at is null
+       and exists (select 1 from public.profiles p where p.id = n.recipient_id and p.role = 'staff');
   elsif new.sender_id is not null then
-    update public.conversations set partner_read_at = now() where id = c.id;
+    update public.conversations
+       set partner_read_at = greatest(coalesce(partner_read_at, '-infinity'::timestamptz), new.created_at)
+     where id = c.id;
+    update public.notifications set read_at = clock_timestamp()
+     where conversation_id = c.id and kind = 'message' and recipient_id = new.sender_id and read_at is null;
   end if;
 
   if c.kind = 'partner' then
@@ -123,7 +152,7 @@ begin
 
   insert into public.notifications
     (organization_id, recipient_id, kind, actor_id, conversation_id, message_id, label, link)
-  select c.organization_id, p.id, 'message', new.sender_id, c.id, new.id, c.title,
+  select c.organization_id, p.id, 'message', new.sender_id, c.id, new.id, left(c.title, 300),
          case when p.role = 'staff' then link_staff
               when c.kind = 'partner' then 'messaggi' end
     from public.profiles p
@@ -162,13 +191,13 @@ begin
     raise exception 'conversation not found' using errcode = '42501';
   end if;
   if private.is_staff() then
-    update public.conversations set staff_read_at = now() where id = c.id;
-    update public.notifications n set read_at = now()
+    update public.conversations set staff_read_at = clock_timestamp() where id = c.id;
+    update public.notifications n set read_at = clock_timestamp()
      where n.conversation_id = c.id and n.kind = 'message' and n.read_at is null
        and exists (select 1 from public.profiles p where p.id = n.recipient_id and p.role = 'staff');
   else
-    update public.conversations set partner_read_at = now() where id = c.id;
-    update public.notifications set read_at = now()
+    update public.conversations set partner_read_at = clock_timestamp() where id = c.id;
+    update public.notifications set read_at = clock_timestamp()
      where conversation_id = c.id and kind = 'message' and recipient_id = uid and read_at is null;
   end if;
 end $$;
@@ -203,7 +232,7 @@ language sql stable security definer set search_path = '' as $$
              from public.conversation_members cm
              join public.profiles p on p.id = cm.profile_id
             where cm.conversation_id = c.id and p.role = 'staff'
-            order by cm.created_at), null)
+            order by cm.created_at, p.id), null)
     from me
     cross join public.conversations c
     join public.partners pa on pa.id = c.partner_id
@@ -213,7 +242,7 @@ language sql stable security definer set search_path = '' as $$
                       where s.id = m.sender_id and s.role in ('staff', 'former_staff')) as from_gemina
         from public.messages m
        where m.conversation_id = c.id and m.deleted_at is null and (me.staff or not m.internal)
-       order by m.created_at desc
+       order by m.created_at desc, m.id desc
        limit 1) lm on true
    where me.uid is not null
      and c.kind = 'partner'
@@ -236,6 +265,7 @@ $$;
 
 -- 9. Privileges -----------------------------------------------------------------------------------------------------------------
 revoke execute on function private.request_message_emails(text, uuid) from public, anon, authenticated;
+revoke execute on function private.messages_server_values() from public, anon, authenticated;
 revoke execute on function private.notify_on_message() from public, anon, authenticated;
 revoke execute on function public.mark_conversation_read(uuid) from public, anon;
 revoke execute on function public.partner_threads(uuid) from public, anon;

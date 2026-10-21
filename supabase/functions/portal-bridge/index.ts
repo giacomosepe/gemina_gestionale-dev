@@ -1,4 +1,4 @@
-// portal-bridge (v5)
+// portal-bridge (v6)
 // Lets Zite endpoints use Supabase on behalf of the person logged in to Zite.
 //
 // Trust model:
@@ -28,6 +28,10 @@
 // 2026-10-20 (v5): action sync_partner (staff secret): segnalatori created/edited/archived/deleted in Zite
 // update public.partners; real emails only with PARTNER_EMAILS_REAL=true or DEV_TEST_PARTNER_EMAILS. Archiving or an
 // email change drops portal memberships at once; archive_missing_partners repairs lost deletes.
+// 2026-10-21 (v6, step 6, migration 20261021140000): action start_partner_conversation (portal secret): a referrer starts a
+// conversation with the colleague they chose (the portal's Zite endpoint has checked colleague, pratica and azienda). Referrers
+// can no longer create conversations directly. mark_read uses public.mark_conversation_read (read by anyone at Gemina = read
+// for the team; reading does not make a colleague take part). list_conversations counts unread from the per-side read times.
 
 import postgres from "npm:postgres@3.4.5";
 import { createClient } from "npm:@supabase/supabase-js@2.50.0";
@@ -298,6 +302,38 @@ async function archiveMissingPartners(audience: Audience, p: Record<string, unkn
   return { archived: gone.length };
 }
 
+// A referrer starts a conversation (portal secret only). The portal's Zite endpoint has already checked that the pratica and
+// azienda are the referrer's; the colleague must be a current staff member. The conversation and the colleague taking part
+// are written with full rights (browsers cannot create referrer conversations); the first message is written AS the referrer,
+// so the send limit, notifications (to the chosen colleague) and server-set time apply as for any message.
+async function startPartnerConversation(audience: Audience, user: { id: string; role: string }, p: Record<string, unknown>) {
+  if (audience !== "portal") throw new BridgeError(403, "portal_only");
+  if (user.role !== "partner") throw new BridgeError(403, "partner_only");
+  const title = text(p.title, "title", 200).replace(/\s+/g, " ");
+  const firstMessage = text(p.first_message, "first_message", 10000);
+  const colleague = uuid(p.colleague_id, "colleague_id");
+  const ziteP = optText(p.zite_pratica_id, "zite_pratica_id", 100);
+  const ziteA = optText(p.zite_azienda_id, "zite_azienda_id", 100);
+  return await sql.begin(async (tx) => {
+    const mine = await tx`select partner_id from public.partner_members where profile_id = ${user.id}`;
+    if (mine.length !== 1) throw new BridgeError(403, "unknown_user");
+    const [col] = await tx`select id from public.profiles where id = ${colleague} and role = 'staff'`;
+    if (!col) throw new BridgeError(400, "invalid_colleague");
+    const [c] = await tx`
+      insert into public.conversations (kind, title, partner_id, created_by, zite_pratica_id, zite_azienda_id)
+      values ('partner', ${title}, ${mine[0].partner_id}, ${user.id}, ${ziteP}, ${ziteA})
+      returning id`;
+    await tx`insert into public.conversation_members (conversation_id, profile_id) values (${c.id}, ${col.id})`;
+    await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: user.id, role: "authenticated" })}, true)`;
+    await tx.unsafe("set local role authenticated");
+    const [m] = await tx`
+      insert into public.messages (conversation_id, sender_id, body)
+      values (${c.id}, ${user.id}, ${firstMessage})
+      returning id, created_at`;
+    return { conversation_id: c.id, message_id: m.id, created_at: m.created_at };
+  }) as { conversation_id: string; message_id: string; created_at: string };
+}
+
 // ---------------------------------------------------------------------------
 // Actions
 // ---------------------------------------------------------------------------
@@ -353,11 +389,11 @@ const actions: Record<string, Handler> = {
              (select count(*)::int from public.messages m
                where m.conversation_id = c.id
                  and m.sender_id is distinct from ${userId}
-                 and m.created_at > coalesce(cm.last_read_at, 'epoch'::timestamptz)) as unread
+                 and m.created_at > coalesce(case when private.is_staff() then c.staff_read_at else c.partner_read_at end,
+                                             'epoch'::timestamptz)) as unread
         from public.conversations c
         left join public.companies co on co.id = c.company_id
         left join public.partners pa on pa.id = c.partner_id
-        left join public.conversation_members cm on cm.conversation_id = c.id and cm.profile_id = ${userId}
         left join lateral (select m.body, m.created_at from public.messages m
                             where m.conversation_id = c.id
                             order by m.created_at desc limit 1) lm on true
@@ -396,19 +432,13 @@ const actions: Record<string, Handler> = {
       insert into public.messages (conversation_id, sender_id, body, internal)
       values (${conversationId}, ${userId}, ${body}, ${internal})
       returning id, created_at`;
-    await tx`
-      insert into public.conversation_members (conversation_id, profile_id, last_read_at)
-      values (${conversationId}, ${userId}, now())
-      on conflict (conversation_id, profile_id) do update set last_read_at = excluded.last_read_at`;
+    // Taking part and read state are set by the database trigger (notify_on_message).
     return m;
   },
 
   async mark_read(tx, userId, p) {
     const conversationId = uuid(p.conversation_id, "conversation_id");
-    await tx`
-      insert into public.conversation_members (conversation_id, profile_id, last_read_at)
-      values (${conversationId}, ${userId}, now())
-      on conflict (conversation_id, profile_id) do update set last_read_at = excluded.last_read_at`;
+    await tx`select public.mark_conversation_read(${conversationId})`;
     return { ok: true };
   },
 
@@ -422,13 +452,8 @@ const actions: Record<string, Handler> = {
     let partnerId: string | null = null;
 
     if (me.role === "partner") {
-      const mine = await tx`select partner_id from public.partner_members where profile_id = ${userId}`;
-      const requested = optUuid(p.partner_id, "partner_id");
-      partnerId = requested ?? (mine.length === 1 ? mine[0].partner_id : null);
-      if (!partnerId) throw new BridgeError(400, "partner_id_required");
-      kind = "partner";
-      // Referrers can't link conversations to Zite records (the database enforces this too).
-      p = { ...p, zite_pratica_id: null, zite_trattativa_id: null, zite_provvigione_id: null };
+      // Since v6 a referrer starts a conversation only with start_partner_conversation (colleague chosen and checked).
+      throw new BridgeError(403, "use_start_partner_conversation");
     } else {
       kind = p.kind === "client" ? "client" : "partner";
       companyId = optUuid(p.company_id, "company_id");
@@ -496,11 +521,14 @@ Deno.serve(async (req) => {
     const email = String(payload.email ?? "").trim().toLowerCase();
     if (!EMAIL.test(email)) throw new BridgeError(400, "invalid_email");
     const action = String(payload.action ?? "");
-    if (action !== "session" && action !== "staff_leave" && !Object.hasOwn(actions, action)) throw new BridgeError(400, "unknown_action");
+    if (action !== "session" && action !== "staff_leave" && action !== "start_partner_conversation" && !Object.hasOwn(actions, action)) {
+      throw new BridgeError(400, "unknown_action");
+    }
 
     const user = await resolveUser(email, audience, payload);
     if (action === "session") return reply(200, { ok: true, data: await createSession(email) });
     if (action === "staff_leave") return reply(200, { ok: true, data: await staffLeave(audience, user.id, payload) });
+    if (action === "start_partner_conversation") return reply(200, { ok: true, data: await startPartnerConversation(audience, user, payload) });
     const data = await asUser(user.id, (tx) => actions[action](tx, user.id, payload));
     return reply(200, { ok: true, data });
   } catch (e) {
@@ -509,6 +537,8 @@ Deno.serve(async (req) => {
     // 42501 = RLS / permission denied; P0429 = send limit
     if (code === "42501") return reply(403, { ok: false, error: "not_allowed" });
     if (code === "P0429") return reply(429, { ok: false, error: "rate_limited" });
+    // 23505 = unique: a conversation with this subject already exists for the referrer
+    if (code === "23505") return reply(409, { ok: false, error: "subject_exists" });
     if (code === "23503" || code === "23514") return reply(400, { ok: false, error: "invalid_reference" });
     // Code and message only: the whole error can carry query parameters (emails, message text).
     console.error("bridge error", code ?? "", (e as { message?: string })?.message ?? "");
