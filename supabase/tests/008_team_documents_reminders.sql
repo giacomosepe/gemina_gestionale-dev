@@ -38,12 +38,12 @@ begin
   ---------------------------------------------------------------- team documents
   perform set_config('request.jwt.claims', json_build_object('sub', u_s1, 'role', 'authenticated')::text, true);
   set local role authenticated;
-  insert into public.documents (kind, title, mime_type, zite_pratica_id, zite_attivita_id, shared)
-    values ('team', 'Visura camerale.pdf', 'application/pdf', 't8-pratica', 't8-azione', true)
+  insert into public.documents (kind, title, mime_type, zite_azienda_id, zite_pratica_id, zite_attivita_id, shared)
+    values ('team', 'Visura camerale.pdf', 'application/pdf', 't8-azienda', 't8-pratica', 't8-azione', true)
     returning id, storage_path into d_team, path;
   reset role;
   select * into r from public.documents where id = d_team;
-  ok := path = 'team/t8-pratica/' || d_team || '/Visura_camerale.pdf';
+  ok := path = 'team/t8-azienda/' || d_team || '/Visura_camerale.pdf';
   failures := failures + (not ok)::int;
   report := report || format(E'%s staff add a team document; the server makes the path (got %s)\n', case when ok then 'PASS' else 'FAIL' end, path);
   ok := not r.shared and r.organization_id = private.default_organization_id() and r.zite_attivita_id = 't8-azione';
@@ -51,11 +51,11 @@ begin
   report := report || format(E'%s a team document is never shared, takes the organization and keeps the azione\n', case when ok then 'PASS' else 'FAIL' end);
 
   begin
-    insert into public.documents (kind, title) values ('team', 'senza pratica.pdf');
+    insert into public.documents (kind, title, zite_pratica_id) values ('team', 'senza azienda.pdf', 't8-pratica');
     ok := false;
   exception when check_violation then ok := true; end;
   failures := failures + (not ok)::int;
-  report := report || format(E'%s a team document needs a pratica\n', case when ok then 'PASS' else 'FAIL' end);
+  report := report || format(E'%s a team document needs an azienda (since 20261022150000)\n', case when ok then 'PASS' else 'FAIL' end);
 
   perform set_config('request.jwt.claims', json_build_object('sub', u_s1, 'role', 'authenticated')::text, true);
   set local role authenticated;
@@ -78,7 +78,7 @@ begin
   perform set_config('request.jwt.claims', json_build_object('sub', u_ref, 'role', 'authenticated')::text, true);
   set local role authenticated;
   begin
-    insert into public.documents (kind, title, zite_pratica_id) values ('team', 'intruso.pdf', 't8-pratica');
+    insert into public.documents (kind, title, zite_pratica_id) values ('team', 'intruso.pdf', 't8-pratica');  -- refused for a segnalatore whatever the scope
     ok := false;
   exception when others then ok := true; end;
   ok := ok and not private.can_access_document_path(path);
@@ -87,8 +87,8 @@ begin
   report := report || format(E'%s a segnalatore cannot add a team document nor read its file\n', case when ok then 'PASS' else 'FAIL' end);
 
   begin
-    insert into public.documents (kind, title, zite_pratica_id, conversation_id)
-      select 'team', 'in conversazione.pdf', 't8-pratica', id from public.conversations limit 1;
+    insert into public.documents (kind, title, zite_azienda_id, zite_pratica_id, conversation_id)
+      select 'team', 'in conversazione.pdf', 't8-azienda', 't8-pratica', id from public.conversations limit 1;
     ok := not found;
   exception when check_violation then ok := true; end;
   failures := failures + (not ok)::int;
