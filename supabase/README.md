@@ -68,6 +68,11 @@ It is the structure of production on 2026-10-19, read from its catalog (producti
   the pratica's «Documenti dal server». `public.reminders` (one per pratica and date key; staff write from the browser; recipients =
   Zite user ids) + `public.reminder_sends`; pg_cron job `pratica-reminders` every hour at :05 runs `private.send_due_reminders()`,
   which acts at 8 in Rome: bell (kind `event`, event `promemoria`, link `pratica:<id>`) and message-emails mode `reminders`.
+- Azienda as home of team documents (migration 20261022145359, test 009): a `team` document always has `zite_azienda_id`
+  (path `team/<azienda>/<doc>/<name>`), may be about a trattativa and/or a pratica, and has `lifespan` `company` (default:
+  serves every project of the azienda, e.g. bilanci with `category = 'Bilancio <anno>'`) or `project` (needs a trattativa or
+  pratica). Views read across (a pratica shows the azienda's documents and its own); nothing is copied. Bucket limit 50 MB.
+  A reminder is about exactly one pratica or trattativa (`zite_trattativa_id`); the bell links `trattativa:<id>` for the latter.
 - Security advisor, expected warnings: leaked-password protection; `authenticated_security_definer_function_executable` for
   `mark_conversation_read`, `partner_threads`, `staff_colleagues`, `confirm_document_upload`, `remove_document`,
   `notify_document`, `mark_documents_read`, `partner_documents` (meant to be called by signed-in users; each checks the

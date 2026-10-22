@@ -55,7 +55,7 @@ begin
     ok := false;
   exception when check_violation then ok := true; end;
   failures := failures + (not ok)::int;
-  report := report || format(E'%s a team document needs an azienda (since 20261022150000)\n', case when ok then 'PASS' else 'FAIL' end);
+  report := report || format(E'%s a team document needs an azienda (since 20261022145359)\n', case when ok then 'PASS' else 'FAIL' end);
 
   perform set_config('request.jwt.claims', json_build_object('sub', u_s1, 'role', 'authenticated')::text, true);
   set local role authenticated;

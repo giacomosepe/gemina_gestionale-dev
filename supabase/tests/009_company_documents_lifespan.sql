@@ -1,4 +1,4 @@
--- Team documents with the azienda as home, lifespan, bucket size, reminders of a trattativa (migration 20261022150000).
+-- Team documents with the azienda as home, lifespan, bucket size, reminders of a trattativa (migration 20261022145359).
 -- Same pattern as 001-008: one DO block, everything rolled back by the final RAISE; the message is the report. The morning job
 -- is not run here (it queues an email request, which the connector refuses); the bell link is checked on the function text.
 
