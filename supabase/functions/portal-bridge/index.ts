@@ -34,6 +34,8 @@
 // for the team; reading does not make a colleague take part). list_conversations counts unread from the per-side read times.
 // 2026-10-21 (v7, migration 20261021155543): action post_automatic_message (staff secret): the Gestionale's automatic notices
 // to a segnalatore, signed Gemina Advisory.
+// 2026-10-22 (v8): start_partner_conversation also takes zite_trattativa_id (the portal lets a referrer say a message is about
+// one of their trattative).
 
 import postgres from "npm:postgres@3.4.5";
 import { createClient } from "npm:@supabase/supabase-js@2.50.0";
@@ -352,14 +354,16 @@ async function startPartnerConversation(audience: Audience, user: { id: string; 
   const colleague = uuid(p.colleague_id, "colleague_id");
   const ziteP = optText(p.zite_pratica_id, "zite_pratica_id", 100);
   const ziteA = optText(p.zite_azienda_id, "zite_azienda_id", 100);
+  // v8 (2026-10-22): the trattativa the referrer chose (checked by the portal endpoint, like pratica and azienda)
+  const ziteT = optText(p.zite_trattativa_id, "zite_trattativa_id", 100);
   return await sql.begin(async (tx) => {
     const mine = await tx`select partner_id from public.partner_members where profile_id = ${user.id}`;
     if (mine.length !== 1) throw new BridgeError(403, "unknown_user");
     const [col] = await tx`select id from public.profiles where id = ${colleague} and role = 'staff'`;
     if (!col) throw new BridgeError(400, "invalid_colleague");
     const [c] = await tx`
-      insert into public.conversations (kind, title, partner_id, created_by, zite_pratica_id, zite_azienda_id)
-      values ('partner', ${title}, ${mine[0].partner_id}, ${user.id}, ${ziteP}, ${ziteA})
+      insert into public.conversations (kind, title, partner_id, created_by, zite_pratica_id, zite_azienda_id, zite_trattativa_id)
+      values ('partner', ${title}, ${mine[0].partner_id}, ${user.id}, ${ziteP}, ${ziteA}, ${ziteT})
       returning id`;
     await tx`insert into public.conversation_members (conversation_id, profile_id) values (${c.id}, ${col.id})`;
     await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: user.id, role: "authenticated" })}, true)`;
