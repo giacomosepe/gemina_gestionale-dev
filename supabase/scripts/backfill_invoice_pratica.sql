@@ -1,7 +1,7 @@
 -- One-off, idempotent backfill of qonto_documents.pratica_id from the Zite Fatture -> Pratica links (PRDDISC-12).
 -- Source: workspace "Gemina Revenue System", table Fatture, field "Pratica", read on 2026-10-23 (4 invoices). To repeat it, replace the rows of `zite`
 -- with (Qonto ID, Zite id of the linked pratica or null) from Zite. Links from Zite are stored with source 'zite' and are never overwritten by the rule.
--- Only documents with no link yet are touched, so running it again changes nothing. Needs migration 20261023190000_invoice_pratica_link.sql and the mirror
+-- Only documents with no link yet are touched, so running it again changes nothing. Needs migration 20261023145446_invoice_pratica_link.sql and the mirror
 -- (public.pratiche, resync_pratiche) filled. One json row comes back: the report.
 
 begin;

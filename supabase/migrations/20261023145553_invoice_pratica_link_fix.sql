@@ -1,4 +1,4 @@
--- Two fixes to 20261023190000_invoice_pratica_link (found by test 015 and the security advisor right after applying it). Replacing statements only.
+-- Two fixes to 20261023145446_invoice_pratica_link (found by test 015 and the security advisor right after applying it). Replacing statements only.
 -- 1. pratica_payment_status_v.archivable was NULL (not false) for a pratica with no total; it is now always true or false.
 -- 2. private.fully_paid_tolerance_cents had no fixed search_path (advisor warning function_search_path_mutable).
 
