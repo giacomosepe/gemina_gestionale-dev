@@ -6,7 +6,7 @@ do $$
 declare
   org uuid := (select id from public.organizations limit 1);
   u_a uuid := gen_random_uuid(); u_b uuid := gen_random_uuid(); u_c uuid := gen_random_uuid();
-  u_staff uuid := gen_random_uuid(); u_client uuid := gen_random_uuid();
+  u_staff uuid := gen_random_uuid(); u_client uuid := gen_random_uuid(); u_spare uuid := gen_random_uuid();
   pa uuid; pb uuid; pc uuid;
   cx uuid; cy uuid; cz uuid; cw uuid; cclient uuid;
   prat uuid := gen_random_uuid();
@@ -19,7 +19,7 @@ begin
   insert into auth.users (id, email, aud, role) values
     (u_a, 't17-a@example.test', 'authenticated', 'authenticated'), (u_b, 't17-b@example.test', 'authenticated', 'authenticated'),
     (u_c, 't17-c@example.test', 'authenticated', 'authenticated'), (u_staff, 't17-staff@example.test', 'authenticated', 'authenticated'),
-    (u_client, 't17-client@example.test', 'authenticated', 'authenticated');
+    (u_client, 't17-client@example.test', 'authenticated', 'authenticated'), (u_spare, 't17-spare@example.test', 'authenticated', 'authenticated');
   update public.profiles set role = 'partner' where id in (u_a, u_b, u_c);
   update public.profiles set role = 'staff', staff_role = 'manager', zite_user_id = 't17-zite-staff' where id = u_staff;
   insert into public.partners (zite_segnalatore_id, name, email, organization_id) values ('t17-a', 'T17 A', 't17-a@example.test', org) returning id into pa;
@@ -117,7 +117,7 @@ begin
   ok := ok and (select count(*) from public.partner_payments()) = 0;
   reset role;
   update public.partners set archived = false where id = pc;
-  delete from public.partner_members where partner_id = pc;
+  update public.partner_members set profile_id = u_spare where partner_id = pc;   -- C's login is no longer a member (an update, not a delete: the SQL connector holds back DELETE statements)
   set local role authenticated;
   ok := ok and (select count(*) from public.partner_payments()) = 0;
   reset role;
