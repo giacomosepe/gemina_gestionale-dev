@@ -134,8 +134,12 @@ It is the structure of production on 2026-10-19, read from its catalog (producti
 - Qonto sync button (portal-bridge v11, PRDDISC-18): action `run_qonto_sync` (staff secret; the caller must be an admin, else `admin_only`; refused with `sync_running` while a run started in the last 5 minutes has not finished).
   The bridge reads `qonto_sync_secret` from the Vault, calls the `qonto-sync` Edge Function and returns only the counts (`fetched`, `inserted`, `updated`, `unmatched`, `skipped`, `removed`, `run_id`, or `ok: false` with a short `error`).
   The run is logged in `qonto_sync_runs` by `qonto-sync` itself. Neither the Qonto key nor the function's secret ever reach Zite or a browser. Zite's endpoint is `sincronizzaQontoSupabase` (admin only).
+- Marking commissions (migration 20261023223240, test 020): `public.mark_commissions_invoiced(ids, invoice_number, on_date)` (the segnalatore's invoice arrived: matured lines only; number required, date optional) and
+  `public.mark_commissions_paid(ids, on_date)` (Gemina paid the segnalatore: invoiced lines only; date defaults to today in Rome). Staff only (checked inside), security definer, fixed search path, execute for signed-in users only.
+  All the lines of a call succeed or none does (rows locked first); the answer is the lines as `commission_stages_v` shows them (the stage is read from that view). Messages are in Italian, as Zite's. Unlike Zite's endpoints, the stage is checked
+  in the database (Zite checks nothing but the number; its screens only offer the right lines); un-marking a line paid (Zite `pagata: false`) is NOT available yet.
 - Security advisor, expected warnings: leaked-password protection; `authenticated_security_definer_function_executable` for
   `mark_conversation_read`, `partner_threads`, `staff_colleagues`, `confirm_document_upload`, `remove_document`,
-  `notify_document`, `mark_documents_read`, `partner_documents`, `partner_payments`, `rebuild_all_commissions` (meant to be called by signed-in users; each checks the
+  `notify_document`, `mark_documents_read`, `partner_documents`, `partner_payments`, `rebuild_all_commissions`, `mark_commissions_invoiced`, `mark_commissions_paid` (meant to be called by signed-in users; each checks the
   caller inside).
 - Later: token hook, MFA.
