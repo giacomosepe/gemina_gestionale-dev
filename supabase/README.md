@@ -92,6 +92,11 @@ It is the structure of production on 2026-10-19, read from its catalog (producti
   secrets `functions_url` and `qonto_sync_secret`. Job `qonto-sync-check` (every hour at :20, `private.check_qonto_sync()`): if the latest `qonto_sync_runs`
   row failed, or started more than 26 hours ago, every admin (`staff_role = 'admin'`) gets one bell notification (kind `event`, event `qonto-sync`, no link,
   no email); `event_key` makes each problem arrive once. With no run at all the check is quiet.
+- Invoice views (migration 20261023131450, test 012), all `security_invoker` so the RLS of `qonto_documents` applies (staff read; partners nothing):
+  `invoice_status_v` (every document, `status_visible` = Scaduta when Emessa and due before today in Rome, `days_overdue`, `removed` flag),
+  `invoice_payments_v` (paid invoices with `issue_date` and `paid_at`; `needs_review` when paid but no date), `invoice_vat_v` (net, VAT, total per
+  document by issue date, Annullata and removed left out), `invoice_vat_month_v` and `invoice_vat_quarter_v` (the same summed; credit notes are already
+  negative). No DSO in the database (the app computes it from `issue_date` and `paid_at`).
 - Security advisor, expected warnings: leaked-password protection; `authenticated_security_definer_function_executable` for
   `mark_conversation_read`, `partner_threads`, `staff_colleagues`, `confirm_document_upload`, `remove_document`,
   `notify_document`, `mark_documents_read`, `partner_documents` (meant to be called by signed-in users; each checks the
