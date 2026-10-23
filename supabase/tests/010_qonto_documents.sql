@@ -37,7 +37,7 @@ begin
     values ('t10-inv-1', 'invoice', 'T10-001', 'paid', 'Incassata', date '2026-01-10', date '2026-02-10', date '2026-02-01', 122000, 22000, '{"id":"t10-inv-1"}')
     returning id into d1;
   insert into public.qonto_documents (qonto_id, kind, status_qonto, status, issue_date, total_cents, vat_cents, raw)
-    values ('t10-cn-1', 'credit_note', 'unpaid', 'Emessa', date '2026-01-20', 12200, 2200, '{}');
+    values ('t10-cn-1', 'credit_note', 'unpaid', 'Emessa', date '2026-01-20', -12200, -2200, '{}');
   insert into public.qonto_sync_runs (fetched_count, inserted_count) values (2, 2);
   reset role;
   select * into r from public.qonto_documents where id = d1;
@@ -74,6 +74,20 @@ begin
   exception when check_violation then ok := true; end;
   failures := failures + (not ok)::int;
   report := report || format(E'%s kind is invoice or credit_note only\n', case when ok then 'PASS' else 'FAIL' end);
+
+  begin
+    insert into public.qonto_documents (qonto_id, kind, status_qonto, status, issue_date, total_cents, vat_cents, raw)
+      values ('t10-cn-pos', 'credit_note', 'unpaid', 'Emessa', date '2026-01-20', 100, 10, '{}');
+    ok := false;
+  exception when check_violation then ok := true; end;
+  failures := failures + (not ok)::int;
+  report := report || format(E'%s a credit note must be negative\n', case when ok then 'PASS' else 'FAIL' end);
+
+  -- removed_at and the run counters exist and default to nothing
+  ok := (select removed_at is null from public.qonto_documents where qonto_id = 't10-inv-1')
+        and (select unmatched_count = 0 and skipped_count = 0 and removed_count = 0 from public.qonto_sync_runs limit 1);
+  failures := failures + (not ok)::int;
+  report := report || format(E'%s removed_at null by default; run counters start at 0\n', case when ok then 'PASS' else 'FAIL' end);
 
   -- staff read
   perform set_config('request.jwt.claims', json_build_object('sub', u_s1, 'role', 'authenticated')::text, true);
