@@ -125,8 +125,14 @@ It is the structure of production on 2026-10-19, read from its catalog (producti
   gives the stage with Zite's names and order: Provvigioni teoriche (invoice not paid), maturate (invoice Incassata), fatturate (partner invoice number set), ricevute (`paid_on` set; wins over the rest).
   Staff read only, no partner policy; written only by the service role or the functions of the next issues (rebuild PRDDISC-20, marks PRDDISC-21). Backfill of Zite `Provvigioni`:
   `scripts/backfill_commissions.sql` (idempotent; Zite had 0 lines on 2026-10-23).
+- Commission rebuild (migrations 20261023170220 and 20261023170331, test 019): `private.rebuild_commissions(invoice)` = Zite's `aggiornaProvvigioniFattura`. One line per invoice and referral active on the issue date
+  (`referral_active_on`); the invoice must be a real invoice (not a credit note, not cancelled, not removed in Qonto) with an issue date, a net amount, a company AND a pratica (as in Zite, which finds the client through the pratica).
+  Whole net amount, no exclusion. Percentage frozen at creation; the base follows a corrected invoice. **Lines with a partner invoice number or `paid_on` are never touched** (Zite protects only paid ones; the invoiced ones are protected here as the issue asks).
+  `commissions.matured_at` is set the first time the invoice is paid (`clock_timestamp()`; a line born on an already paid invoice gets `matured_at = created_at`, so PRDDISC-22 fires only when `matured_at > created_at`).
+  Triggers: `qonto_documents` (insert; update of kind, status, company, pratica, net amount, issue date, removed) and `referrals` (insert, update of company/partner/percentage/dates/removed, delete: rebuilds that company's invoices).
+  A failing rebuild never breaks the save: it is written to `commission_rebuild_errors` (staff read; look at it after a sync). Repair: `public.rebuild_all_commissions()` (admins only; idempotent; returns the counts). First run at migration: 0 lines (no referral on the 4 real invoices' companies; Zite has 0 lines).
 - Security advisor, expected warnings: leaked-password protection; `authenticated_security_definer_function_executable` for
   `mark_conversation_read`, `partner_threads`, `staff_colleagues`, `confirm_document_upload`, `remove_document`,
-  `notify_document`, `mark_documents_read`, `partner_documents`, `partner_payments` (meant to be called by signed-in users; each checks the
+  `notify_document`, `mark_documents_read`, `partner_documents`, `partner_payments`, `rebuild_all_commissions` (meant to be called by signed-in users; each checks the
   caller inside).
 - Later: token hook, MFA.
