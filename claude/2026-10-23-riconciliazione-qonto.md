@@ -66,8 +66,11 @@ re-run when such documents exist:
 - **Rounding.** Qonto gives integer cents, Zite stores euros rounded to 2 decimals; no case with a difference yet.
 - **Removed documents** (`removed_at`) and **manual invoices**: none exist.
 
-## 5. For sign-off (gate before M2)
+## 5. Sign-off (Giacomo, 2026-10-23)
 
-1. The two client differences (Zite side) are accepted, or the two Zite links are fixed.
-2. The "date fallback" and credit-note settlement differences are accepted as design (Supabase keeps null) or the rule is changed.
-3. Re-run `reconcile_qonto.sql` once more invoices (especially a credit note and an overdue one) exist.
+1. GA002 and GA003 client differences: **accepted**. Zite lacks the link; Supabase picked the right client from the Qonto client id.
+2. Payment date: **Supabase keeps `paid_at` null** when Qonto has none (a fallback to the issue date would make a late payer look fast in DSO). The app shows
+   "paid, date missing". Such cases will appear as differences against Zite, which fills the date in. They are listed in `invoice_payments_v` and `invoice_review_v`.
+3. Due date: an invoice with no due date could never become overdue, so it goes to the **review list** (`invoice_review_v`, reason `due_date_missing`).
+4. Credit notes: **`paid_at` stays null**; a credit note is not paid and does not count in DSO. Zite's settlement on the issue date is the quirk, not the rule.
+5. Re-run `reconcile_qonto.sql` once a credit note and an overdue invoice exist. Until then **Zite stays the source for any screen the team relies on**.
