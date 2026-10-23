@@ -1,8 +1,8 @@
 -- One-off, idempotent backfill of companies.qonto_client_id and companies.vat_number from Zite Aziende (PRDDISC-3).
 -- Source: workspace "Gemina Revenue System", table Aziende, fields "Qonto ID" and "P.IVA", read on 2026-10-23 (63 aziende).
 -- Match: companies.zite_azienda_id = the Zite record id. A Zite value that is empty never overwrites a Supabase value, and a
--- row is touched only when its value differs, so running the script again changes nothing (the last query shows 0 rows).
--- Needs migration 20261023130000_companies_qonto_client.sql. Run as the database owner (SQL editor / MCP), not from a browser.
+-- row is touched only when its value differs, so running the script again changes nothing (differences_left in the report stays []).
+-- Needs migration 20261023125510_companies_qonto_client.sql. Run as the database owner (SQL editor / MCP), not from a browser.
 
 begin;
 
@@ -87,32 +87,31 @@ update public.companies c
    and (c.qonto_client_id is distinct from coalesce(nullif(btrim(z.qonto_id), ''), c.qonto_client_id)
      or c.vat_number      is distinct from coalesce(nullif(btrim(z.piva), ''), c.vat_number));
 
--- 2. Report -----------------------------------------------------------------------------------------------------------------------
--- 2a. Counts: Zite aziende with a Qonto ID = Supabase companies with qonto_client_id, or each gap is in 2b/2c
-select (select count(*) from zite_aziende where nullif(btrim(qonto_id), '') is not null)  as zite_with_qonto_id,
-       (select count(*) from public.companies where qonto_client_id is not null)          as supabase_with_qonto_client_id,
-       (select count(*) from zite_aziende where nullif(btrim(piva), '') is not null)       as zite_with_piva,
-       (select count(*) from public.companies where vat_number is not null)                as supabase_with_vat_number,
-       (select count(*) from zite_aziende)                                                 as zite_aziende,
-       (select count(*) from public.companies)                                             as supabase_companies;
-
--- 2b. In Zite, not in Supabase (those with a Qonto ID cannot get their invoices attached)
-select z.zite_azienda_id, z.name, z.qonto_id, z.piva
-  from zite_aziende z
- where not exists (select 1 from public.companies c where c.zite_azienda_id = z.zite_azienda_id)
- order by (nullif(btrim(z.qonto_id), '') is null), z.name;
-
--- 2c. In Supabase, not in Zite
-select c.zite_azienda_id, c.name, c.qonto_client_id, c.vat_number
-  from public.companies c
- where not exists (select 1 from zite_aziende z where z.zite_azienda_id = c.zite_azienda_id)
- order by c.name;
-
--- 2d. Differences still left after the update: must return 0 rows
-select c.zite_azienda_id, c.name, c.qonto_client_id, z.qonto_id, c.vat_number, z.piva
-  from public.companies c
-  join zite_aziende z using (zite_azienda_id)
- where (nullif(btrim(z.qonto_id), '') is not null and c.qonto_client_id is distinct from btrim(z.qonto_id))
-    or (nullif(btrim(z.piva), '') is not null and c.vat_number is distinct from btrim(z.piva));
+-- 2. Report (one row of json) -----------------------------------------------------------------------------------------------------
+-- counts: Zite aziende with a Qonto ID = Supabase companies with qonto_client_id, or each gap is listed below
+-- zite_not_in_supabase: in Zite, not in Supabase (with a Qonto ID they cannot get their invoices attached)
+-- supabase_not_in_zite: in Supabase, not in Zite
+-- differences_left: must be []
+select jsonb_build_object(
+  'counts', jsonb_build_object(
+    'zite_aziende',                  (select count(*) from zite_aziende),
+    'supabase_companies',            (select count(*) from public.companies),
+    'zite_with_qonto_id',            (select count(*) from zite_aziende where nullif(btrim(qonto_id), '') is not null),
+    'supabase_with_qonto_client_id', (select count(*) from public.companies where qonto_client_id is not null),
+    'zite_with_piva',                (select count(*) from zite_aziende where nullif(btrim(piva), '') is not null),
+    'supabase_with_vat_number',      (select count(*) from public.companies where vat_number is not null)),
+  'zite_not_in_supabase', (select coalesce(jsonb_agg(jsonb_build_object('zite_azienda_id', z.zite_azienda_id, 'name', z.name,
+                                  'qonto_id', z.qonto_id, 'piva', z.piva) order by z.name), '[]')
+                             from zite_aziende z
+                            where not exists (select 1 from public.companies c where c.zite_azienda_id = z.zite_azienda_id)),
+  'supabase_not_in_zite', (select coalesce(jsonb_agg(jsonb_build_object('zite_azienda_id', c.zite_azienda_id, 'name', c.name,
+                                  'qonto_client_id', c.qonto_client_id, 'vat_number', c.vat_number) order by c.name), '[]')
+                             from public.companies c
+                            where not exists (select 1 from zite_aziende z where z.zite_azienda_id = c.zite_azienda_id)),
+  'differences_left', (select coalesce(jsonb_agg(jsonb_build_object('zite_azienda_id', c.zite_azienda_id, 'name', c.name)), '[]')
+                         from public.companies c join zite_aziende z using (zite_azienda_id)
+                        where (nullif(btrim(z.qonto_id), '') is not null and c.qonto_client_id is distinct from btrim(z.qonto_id))
+                           or (nullif(btrim(z.piva), '') is not null and c.vat_number is distinct from btrim(z.piva)))
+) as report;
 
 commit;

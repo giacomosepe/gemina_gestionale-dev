@@ -78,6 +78,9 @@ It is the structure of production on 2026-10-19, read from its catalog (producti
   Emessa / Incassata / Annullata as Zite `statoDaQonto`; `paid_at` null when Qonto has none; `company_id` nullable, `zite_pratica_id`
   filled in M2; "Scaduta" is never stored, views derive it) and `public.qonto_sync_runs` (counts and error per run). Staff read only;
   partners and clients nothing; writes only by the service role (the qonto-sync function).
+- Companies and Qonto (migration 20261023125510): `companies.vat_number` (partita IVA, text) and `companies.qonto_client_id` (unique where set), filled from
+  Zite Aziende ("P.IVA", "Qonto ID") by the idempotent script `scripts/backfill_companies_qonto.sql` (run 2026-10-23: 4 Qonto ids, 21 VAT numbers;
+  3 Zite aziende with a P.IVA have no Supabase company: Appennino Food Group, Podartis, Technowrapp). Re-run the script after new aziende get a Qonto ID in Zite.
 - Security advisor, expected warnings: leaked-password protection; `authenticated_security_definer_function_executable` for
   `mark_conversation_read`, `partner_threads`, `staff_colleagues`, `confirm_document_upload`, `remove_document`,
   `notify_document`, `mark_documents_read`, `partner_documents` (meant to be called by signed-in users; each checks the
