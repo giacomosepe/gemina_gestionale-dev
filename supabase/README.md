@@ -73,6 +73,11 @@ It is the structure of production on 2026-10-19, read from its catalog (producti
   serves every project of the azienda, e.g. bilanci with `category = 'Bilancio <anno>'`) or `project` (needs a trattativa or
   pratica). Views read across (a pratica shows the azienda's documents and its own); nothing is copied. Bucket limit 50 MB.
   A reminder is about exactly one pratica or trattativa (`zite_trattativa_id`); the bell links `trattativa:<id>` for the latter.
+- Qonto documents (migration 20261023100000, test 010): `public.qonto_documents` = one row per Qonto invoice or credit note (drafts not
+  imported; `qonto_id` unique; integer cents `total_cents`, `vat_cents`, `net_cents` = total - VAT; `status_qonto` raw, `status`
+  Emessa / Incassata / Annullata as Zite `statoDaQonto`; `paid_at` null when Qonto has none; `company_id` nullable, `zite_pratica_id`
+  filled in M2; "Scaduta" is never stored, views derive it) and `public.qonto_sync_runs` (counts and error per run). Staff read only;
+  partners and clients nothing; writes only by the service role (the qonto-sync function).
 - Security advisor, expected warnings: leaked-password protection; `authenticated_security_definer_function_executable` for
   `mark_conversation_read`, `partner_threads`, `staff_colleagues`, `confirm_document_upload`, `remove_document`,
   `notify_document`, `mark_documents_read`, `partner_documents` (meant to be called by signed-in users; each checks the
