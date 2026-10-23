@@ -21,7 +21,7 @@ update public.qonto_documents d
    and exists (select 1 from public.pratiche p where p.id = z.pratica_id);
 
 -- Then the rule for everything else that is still unlinked.
-select private.link_invoices_to_pratiche() as linked_by_rule \gset
+select private.link_invoices_to_pratiche();
 
 select jsonb_build_object(
   'zite_links', (select count(*) from zite_links where pratica_id is not null),
