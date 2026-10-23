@@ -106,6 +106,11 @@ It is the structure of production on 2026-10-19, read from its catalog (producti
   (staff secret, bridge v9): `sync_pratica` (one pratica, called by the Gestionale after a pratica is created or its Stato, Azienda or fees change; a failed push never blocks the
   save) and `resync_pratiche` (repair: all pratiche in one call, 150 at most; the ones Zite no longer has are marked removed, never deleted). Both end in `private.sync_pratiche`. Zite side (commit 9e988bc in the Zite workspace, 2026-10-23): `lib/supabase/sincronizzaPratica.ts` (4 s timeout, never throws), called only from the pratica writers
   (`nuovaPratica`, `salvaPratica`, `valoriInfoProgetto`, `scriviColonna` for the pratica) and the admin endpoint `sincronizzaPraticheSupabase` (repair). Staff secret and bridge URL are the ones `sincronizzaSegnalatore` uses.
+- Invoice to pratica link and payment status (migration 20261023190000, test 015): `qonto_documents.pratica_id` (FK to the mirror) + `pratica_link_source` (auto / manual / zite); `zite_pratica_id` is kept and filled. Rule as in
+  Zite: the company's one open pratica, else its one pratica in total, else unlinked and listed in `review_invoices_v` (also: company differs from the pratica's). The rule only fills documents with no link, on insert/update of
+  the document and whenever a pratica is synced; manual links (`private.set_invoice_pratica`, service role only) and links copied from Zite (`scripts/backfill_invoice_pratica.sql`) are never overwritten. `pratica_payment_status_v`:
+  `total_fee_cents`, invoiced and paid net (Incassata, credit notes subtracted, cancelled left out), outstanding, `payment_state` partial / fully_paid / overpaid (tolerance 1,000 cents from `private.fully_paid_tolerance_cents()`),
+  `needs_review` (overpaid or no total), `archivable` (= fully_paid; whether the pratica is also closed is not decided, `is_open` is in the view).
 - Security advisor, expected warnings: leaked-password protection; `authenticated_security_definer_function_executable` for
   `mark_conversation_read`, `partner_threads`, `staff_colleagues`, `confirm_document_upload`, `remove_document`,
   `notify_document`, `mark_documents_read`, `partner_documents` (meant to be called by signed-in users; each checks the
