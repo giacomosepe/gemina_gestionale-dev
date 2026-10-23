@@ -97,6 +97,9 @@ It is the structure of production on 2026-10-19, read from its catalog (producti
   `invoice_payments_v` (paid invoices with `issue_date` and `paid_at`; `needs_review` when paid but no date), `invoice_vat_v` (net, VAT, total per
   document by issue date, Annullata and removed left out), `invoice_vat_month_v` and `invoice_vat_quarter_v` (the same summed; credit notes are already
   negative). No DSO in the database (the app computes it from `issue_date` and `paid_at`).
+- Review list (migration 20261023133334, test 013): `invoice_review_v` lists invoices Qonto left incomplete: Emessa without a due date (never Scaduta; `due_date_missing`)
+  and Incassata without a payment date (`paid_at_missing`; `paid_at` stays null, never the issue date, so DSO is not distorted). Credit notes are not review cases.
+  Until a credit note and an overdue invoice exist and `scripts/reconcile_qonto.sql` has been re-run, Zite stays the source for screens the team relies on.
 - Security advisor, expected warnings: leaked-password protection; `authenticated_security_definer_function_executable` for
   `mark_conversation_read`, `partner_threads`, `staff_colleagues`, `confirm_document_upload`, `remove_document`,
   `notify_document`, `mark_documents_read`, `partner_documents` (meant to be called by signed-in users; each checks the

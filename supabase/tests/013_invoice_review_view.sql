@@ -19,7 +19,7 @@ begin
   insert into public.partners (zite_segnalatore_id, name, email, organization_id) values ('t13-ref', 'Test referrer 13', 't13-ref@example.test', org) returning id into p_ref;
   insert into public.partner_members (partner_id, profile_id) values (p_ref, u_ref);
 
-  ok := 'security_invoker=true' = any((select reloptions from pg_class where oid = 'public.invoice_review_v'::regclass));
+  ok := (select 'security_invoker=true' = any(reloptions) from pg_class where oid = 'public.invoice_review_v'::regclass);
   failures := failures + (not ok)::int;
   report := report || format(E'%s the view is security_invoker\n', case when ok then 'PASS' else 'FAIL' end);
 
