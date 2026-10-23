@@ -3,7 +3,7 @@
 -- percentage and base are frozen on the line when it is created (the base alone may follow a corrected invoice amount while the line is not received);
 -- amount in cents, rounded half up (Zite round2 on euros gives the same figure).
 -- Stages as in Zite (STADIO_PROVVIGIONE, tassonomia.ts), forward only: Provvigioni teoriche -> maturate (invoice paid) -> fatturate (the segnalatore's own
--- invoice number is recorded) -> ricevute (paid_on set). This issue only stores and shows them: the lines are created by the rebuild function (PRDDISC-17),
+-- invoice number is recorded) -> ricevute (paid_on set). This issue only stores and shows them: the lines are created by the rebuild function (PRDDISC-20),
 -- the stage moves by the mark functions (PRDDISC-21). Staff read only; no partner policy yet (a partner function comes later); writes only through the
 -- service role or those functions. Additive only.
 
