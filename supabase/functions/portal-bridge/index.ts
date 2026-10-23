@@ -1,4 +1,4 @@
-// portal-bridge (v10)
+// portal-bridge (v11)
 // Lets Zite endpoints use Supabase on behalf of the person logged in to Zite.
 //
 // Trust model:
@@ -41,6 +41,9 @@
 // recomputed here). resync_pratiche is the repair: it sends every pratica and marks the ones Zite no longer has as removed.
 // 2026-10-23 (v10, migration referrals_mirror, PRDDISC-13): actions sync_referral and resync_referrals (staff secret): the same for the Zite
 // Segnalazioni (segnalatore x azienda, percentage, validity) into public.referrals; a deleted one is marked removed, never deleted.
+// 2026-10-23 (v11, PRDDISC-18): action run_qonto_sync (staff secret, caller must be an admin): the Gestionale's "Importa fatture ora" button.
+// The bridge calls the qonto-sync Edge Function with that function's own secret (read from the Vault here, never sent to a browser or to Zite)
+// and returns only the counts of the run. Refused while another run started in the last 5 minutes is still going.
 
 import postgres from "npm:postgres@3.4.5";
 import { createClient } from "npm:@supabase/supabase-js@2.50.0";
@@ -224,6 +227,39 @@ async function staffLeave(audience: Audience, callerId: string, p: Record<string
                           where zite_user_id = ${target} and role = 'staff'
                           returning id`;
   return { removed: rows.length };
+}
+
+// The "Importa fatture ora" button (PRDDISC-18). Staff secret only; the caller must be an administrator. Runs qonto-sync (which logs the run in
+// public.qonto_sync_runs) and returns its counts. A failed run is still a normal answer ({ ok: false, error }) so the screen can show it.
+async function runQontoSync(audience: Audience, callerId: string) {
+  if (audience !== "staff") throw new BridgeError(403, "staff_only");
+  const [caller] = await sql`select staff_role from public.profiles where id = ${callerId} and role = 'staff'`;
+  if (caller?.staff_role !== "admin") throw new BridgeError(403, "admin_only");
+  const [running] = await sql`select 1 as x from public.qonto_sync_runs where finished_at is null and started_at > now() - interval '5 minutes' limit 1`;
+  if (running) throw new BridgeError(409, "sync_running");
+  const [s] = await sql`select decrypted_secret from vault.decrypted_secrets where name = 'qonto_sync_secret'`;
+  if (!s?.decrypted_secret) throw new BridgeError(500, "sync_not_configured");
+  let body: Record<string, unknown> = {};
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/qonto-sync`, {
+      method: "POST",
+      headers: { "x-sync-secret": s.decrypted_secret, "content-type": "application/json" },
+      body: "{}",
+      signal: AbortSignal.timeout(120_000),
+    });
+    body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    if (!res.ok && body.ok !== false) body = { ok: false, error: `qonto-sync answered ${res.status}` };
+  } catch (e) {
+    body = { ok: false, error: (e as { name?: string })?.name === "TimeoutError" ? "qonto-sync took too long" : "qonto-sync not reachable" };
+  }
+  const n = (v: unknown) => (typeof v === "number" ? v : 0);
+  return {
+    ok: body.ok === true,
+    run_id: typeof body.run_id === "string" ? body.run_id : null,
+    error: body.ok === true ? null : String(body.error ?? "sync_failed").slice(0, 200),
+    fetched: n(body.fetched), inserted: n(body.inserted), updated: n(body.updated),
+    unmatched: n(body.unmatched), skipped: n(body.skipped), removed: n(body.removed),
+  };
 }
 
 // A bell notification for one member of the team, sent by Zite's notifica() (both apps, so either secret).
@@ -649,13 +685,14 @@ Deno.serve(async (req) => {
     const email = String(payload.email ?? "").trim().toLowerCase();
     if (!EMAIL.test(email)) throw new BridgeError(400, "invalid_email");
     const action = String(payload.action ?? "");
-    if (action !== "session" && action !== "staff_leave" && action !== "start_partner_conversation" && !Object.hasOwn(actions, action)) {
+    if (action !== "session" && action !== "staff_leave" && action !== "run_qonto_sync" && action !== "start_partner_conversation" && !Object.hasOwn(actions, action)) {
       throw new BridgeError(400, "unknown_action");
     }
 
     const user = await resolveUser(email, audience, payload);
     if (action === "session") return reply(200, { ok: true, data: await createSession(email) });
     if (action === "staff_leave") return reply(200, { ok: true, data: await staffLeave(audience, user.id, payload) });
+    if (action === "run_qonto_sync") return reply(200, { ok: true, data: await runQontoSync(audience, user.id) });
     if (action === "start_partner_conversation") return reply(200, { ok: true, data: await startPartnerConversation(audience, user, payload) });
     const data = await asUser(user.id, (tx) => actions[action](tx, user.id, payload));
     return reply(200, { ok: true, data });

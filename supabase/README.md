@@ -131,6 +131,9 @@ It is the structure of production on 2026-10-19, read from its catalog (producti
   `commissions.matured_at` is set the first time the invoice is paid (`clock_timestamp()`; a line born on an already paid invoice gets `matured_at = created_at`, so PRDDISC-22 fires only when `matured_at > created_at`).
   Triggers: `qonto_documents` (insert; update of kind, status, company, pratica, net amount, issue date, removed) and `referrals` (insert, update of company/partner/percentage/dates/removed, delete: rebuilds that company's invoices).
   A failing rebuild never breaks the save: it is written to `commission_rebuild_errors` (staff read; look at it after a sync). Repair: `public.rebuild_all_commissions()` (admins only; idempotent; returns the counts). First run at migration: 0 lines (no referral on the 4 real invoices' companies; Zite has 0 lines).
+- Qonto sync button (portal-bridge v11, PRDDISC-18): action `run_qonto_sync` (staff secret; the caller must be an admin, else `admin_only`; refused with `sync_running` while a run started in the last 5 minutes has not finished).
+  The bridge reads `qonto_sync_secret` from the Vault, calls the `qonto-sync` Edge Function and returns only the counts (`fetched`, `inserted`, `updated`, `unmatched`, `skipped`, `removed`, `run_id`, or `ok: false` with a short `error`).
+  The run is logged in `qonto_sync_runs` by `qonto-sync` itself. Neither the Qonto key nor the function's secret ever reach Zite or a browser. Zite's endpoint is `sincronizzaQontoSupabase` (admin only).
 - Security advisor, expected warnings: leaked-password protection; `authenticated_security_definer_function_executable` for
   `mark_conversation_read`, `partner_threads`, `staff_colleagues`, `confirm_document_upload`, `remove_document`,
   `notify_document`, `mark_documents_read`, `partner_documents`, `partner_payments`, `rebuild_all_commissions` (meant to be called by signed-in users; each checks the
