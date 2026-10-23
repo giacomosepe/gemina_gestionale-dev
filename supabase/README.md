@@ -125,6 +125,9 @@ It is the structure of production on 2026-10-19, read from its catalog (producti
   gives the stage with Zite's names and order: Provvigioni teoriche (invoice not paid), maturate (invoice Incassata), fatturate (partner invoice number set), ricevute (`paid_on` set; wins over the rest).
   Staff read only, no partner policy; written only by the service role or the functions of the next issues (rebuild PRDDISC-20, marks PRDDISC-21). Backfill of Zite `Provvigioni`:
   `scripts/backfill_commissions.sql` (idempotent; Zite had 0 lines on 2026-10-23).
+- Qonto sync button (portal-bridge v11, PRDDISC-18): action `run_qonto_sync` (staff secret; the caller must be an admin, else `admin_only`; refused with `sync_running` while a run started in the last 5 minutes has not finished).
+  The bridge reads `qonto_sync_secret` from the Vault, calls the `qonto-sync` Edge Function and returns only the counts (`fetched`, `inserted`, `updated`, `unmatched`, `skipped`, `removed`, `run_id`, or `ok: false` with a short `error`).
+  The run is logged in `qonto_sync_runs` by `qonto-sync` itself. Neither the Qonto key nor the function's secret ever reach Zite or a browser. Zite's endpoint is `sincronizzaQontoSupabase` (admin only).
 - Security advisor, expected warnings: leaked-password protection; `authenticated_security_definer_function_executable` for
   `mark_conversation_read`, `partner_threads`, `staff_colleagues`, `confirm_document_upload`, `remove_document`,
   `notify_document`, `mark_documents_read`, `partner_documents`, `partner_payments` (meant to be called by signed-in users; each checks the
