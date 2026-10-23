@@ -1,4 +1,4 @@
-// portal-bridge (v8)
+// portal-bridge (v9)
 // Lets Zite endpoints use Supabase on behalf of the person logged in to Zite.
 //
 // Trust model:
@@ -36,6 +36,9 @@
 // to a segnalatore, signed Gemina Advisory.
 // 2026-10-22 (v8): start_partner_conversation also takes zite_trattativa_id (the portal lets a referrer say a message is about
 // one of their trattative).
+// 2026-10-23 (v9, migration pratiche_mirror, PRDDISC-11): actions sync_pratica and resync_pratiche (staff secret): the Gestionale's
+// server keeps public.pratiche, a read-only mirror of the Zite pratiche (Zite sends the computed total fee and is_open; nothing is
+// recomputed here). resync_pratiche is the repair: it sends every pratica and marks the ones Zite no longer has as removed.
 
 import postgres from "npm:postgres@3.4.5";
 import { createClient } from "npm:@supabase/supabase-js@2.50.0";
@@ -342,6 +345,39 @@ async function archiveMissingPartners(audience: Audience, p: Record<string, unkn
   return { archived: gone.length };
 }
 
+// Pratiche mirror (v9). Zite computes everything (is_open, total fee in cents); this only validates and stores.
+function parsePratica(p: Record<string, unknown>) {
+  if (typeof p.is_open !== "boolean") throw new BridgeError(400, "invalid_is_open");
+  const fee = p.total_fee_cents;
+  if (fee != null && (typeof fee !== "number" || !Number.isSafeInteger(fee))) throw new BridgeError(400, "invalid_total_fee_cents");
+  return {
+    id: uuid(p.zite_pratica_id, "zite_pratica_id"),
+    code: optText(p.code, "code", 100),
+    zite_azienda_id: optText(p.zite_azienda_id, "zite_azienda_id", 100),
+    status: optText(p.status, "status", 100),
+    is_open: p.is_open,
+    total_fee_cents: fee ?? null,
+    removed: p.removed === true,
+  };
+}
+
+async function syncPratica(audience: Audience, p: Record<string, unknown>) {
+  if (audience !== "staff") throw new BridgeError(403, "staff_only");
+  const row = parsePratica(p);
+  const [r] = await sql`select private.sync_pratiche(${JSON.stringify([row])}::text::jsonb, false) as result`;
+  return r.result;
+}
+
+// Repair: every pratica of Zite in one call (150 at most: the body limit is 64 KB); any other pratica of the mirror is
+// marked removed. Never deletes.
+async function resyncPratiche(audience: Audience, p: Record<string, unknown>) {
+  if (audience !== "staff") throw new BridgeError(403, "staff_only");
+  if (!Array.isArray(p.pratiche) || p.pratiche.length > 150) throw new BridgeError(400, "invalid_pratiche");
+  const rows = p.pratiche.map((x) => parsePratica(x as Record<string, unknown>));
+  const [r] = await sql`select private.sync_pratiche(${JSON.stringify(rows)}::text::jsonb, true) as result`;
+  return r.result;
+}
+
 // A referrer starts a conversation (portal secret only). The portal's Zite endpoint has already checked that the pratica and
 // azienda are the referrer's; the colleague must be a current staff member. The conversation and the colleague taking part
 // are written with full rights (browsers cannot create referrer conversations); the first message is written AS the referrer,
@@ -561,6 +597,8 @@ Deno.serve(async (req) => {
     if (payload.action === "sync_partner") return reply(200, { ok: true, data: await syncPartner(audience, payload) });
     if (payload.action === "post_automatic_message") return reply(200, { ok: true, data: await postAutomaticMessage(audience, payload) });
     if (payload.action === "archive_missing_partners") return reply(200, { ok: true, data: await archiveMissingPartners(audience, payload) });
+    if (payload.action === "sync_pratica") return reply(200, { ok: true, data: await syncPratica(audience, payload) });
+    if (payload.action === "resync_pratiche") return reply(200, { ok: true, data: await resyncPratiche(audience, payload) });
 
     const email = String(payload.email ?? "").trim().toLowerCase();
     if (!EMAIL.test(email)) throw new BridgeError(400, "invalid_email");

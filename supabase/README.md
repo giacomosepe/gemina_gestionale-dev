@@ -100,6 +100,12 @@ It is the structure of production on 2026-10-19, read from its catalog (producti
 - Review list (migration 20261023133334, test 013): `invoice_review_v` lists invoices Qonto left incomplete: Emessa without a due date (never Scaduta; `due_date_missing`)
   and Incassata without a payment date (`paid_at_missing`; `paid_at` stays null, never the issue date, so DSO is not distorted). Credit notes are not review cases.
   Until a credit note and an overdue invoice exist and `scripts/reconcile_qonto.sql` has been re-run, Zite stays the source for screens the team relies on.
+- Pratiche mirror (migration 20261023143448, test 014): `public.pratiche` is a read-only copy of the Zite pratiche, keyed by the Zite UUID (the later full migration only adds
+  columns): `code`, `company_id` (resolved from `zite_azienda_id` through `companies`), `status` (Zite label as is), `is_open` (Zite: not Fatturazione completata, not Interrotta),
+  `total_fee_cents` (= Zite "Commissioni totali", `valorePratica`, net of VAT: Zite computes it, Supabase never does), `removed_at`, `synced_at`. Staff read only. Bridge actions
+  (staff secret, bridge v9): `sync_pratica` (one pratica, called by the Gestionale after a pratica is created or its Stato, Azienda or fees change; a failed push never blocks the
+  save) and `resync_pratiche` (repair: all pratiche in one call, 150 at most; the ones Zite no longer has are marked removed, never deleted). Both end in `private.sync_pratiche`. Zite side (commit 9e988bc in the Zite workspace, 2026-10-23): `lib/supabase/sincronizzaPratica.ts` (4 s timeout, never throws), called only from the pratica writers
+  (`nuovaPratica`, `salvaPratica`, `valoriInfoProgetto`, `scriviColonna` for the pratica) and the admin endpoint `sincronizzaPraticheSupabase` (repair). Staff secret and bridge URL are the ones `sincronizzaSegnalatore` uses.
 - Security advisor, expected warnings: leaked-password protection; `authenticated_security_definer_function_executable` for
   `mark_conversation_read`, `partner_threads`, `staff_colleagues`, `confirm_document_upload`, `remove_document`,
   `notify_document`, `mark_documents_read`, `partner_documents` (meant to be called by signed-in users; each checks the
