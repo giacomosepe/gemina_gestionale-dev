@@ -12,7 +12,7 @@ declare
   n int; v text; k int;
   report text := ''; failures int := 0; ok boolean;
   r record;
-  base bigint; pct numeric; sample_ok boolean := true;
+  v_base bigint; v_pct numeric; sample_ok boolean := true;
 begin
   insert into auth.users (id, email, aud, role) values
     (u_p, 't18-p@example.test', 'authenticated', 'authenticated'), (u_staff, 't18-staff@example.test', 'authenticated', 'authenticated'),
@@ -91,9 +91,9 @@ begin
   begin insert into public.commissions (invoice_id, referral_id, partner_id, pct, base_cents, amount_cents) values (d_half, r_b, pb, 5, 1010, 50); exception when check_violation then k := k + 1; end;
   begin insert into public.commissions (invoice_id, referral_id, partner_id, pct, base_cents, amount_cents) values (d_half, r_b, pb, 5, 1010, 52); exception when check_violation then k := k + 1; end;
   -- same as Zite round2 on euros (Math.round(x * 100) / 100) for a spread of bases and percentages
-  for base in select g from generate_series(1, 200000, 997) g loop
-    foreach pct in array array[0, 1, 2.5, 5, 7.5, 10, 12.5, 15, 20, 33.33, 50, 100]::numeric[] loop
-      if floor(base * pct / 100 + 0.5) <> round(((base / 100.0) * pct / 100.0) * 100) then sample_ok := false; end if;
+  for v_base in select g from generate_series(1, 200000, 997) g loop
+    foreach v_pct in array array[0, 1, 2.5, 5, 7.5, 10, 12.5, 15, 20, 33.33, 50, 100]::numeric[] loop
+      if floor(v_base * v_pct / 100 + 0.5) <> round(((v_base / 100.0) * v_pct / 100.0) * 100) then sample_ok := false; end if;
     end loop;
   end loop;
   ok := k = 2 and sample_ok and (select amount_cents from public.commissions where invoice_id = d_half and referral_id = r_a) = 51;
