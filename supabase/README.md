@@ -119,6 +119,12 @@ It is the structure of production on 2026-10-19, read from its catalog (producti
   payment date, not a credit note, not cancelled, not removed in Qonto) of a client the calling segnalatore referred, where the referral was active on the invoice's issue date (`private.referral_active_on`; a referral removed in Zite never counts):
   invoice number and id, company name, pratica code (null if unlinked) and `paid_at`. No amounts, no unpaid or overdue invoices. The caller is checked inside (a current member of a non-archived segnalatore; staff, clients and anyone else get
   zero rows; anonymous cannot call it); archiving the segnalatore or removing the membership ends it at once. The policies and grants of `qonto_documents`, `referrals` and the views are unchanged (staff only). No bridge action or screen yet.
+- Commissions (migrations 20261023162254 and 20261023163202, test 018): `public.commissions` holds one line per invoice and referral (unique on both): `pct` and `base_cents` frozen at creation (the base and amount may follow a corrected
+  invoice until the line is received; pct, invoice, referral and partner never change), `amount_cents` = base x pct / 100 rounded half up (a table check; equals Zite's `round2` on euros), `partner_invoice_number` /
+  `partner_invoiced_on`, `paid_on`. The table refuses a line for a credit note, a cancelled or removed invoice, a negative base, or a partner that is not the referral's. `public.commission_stages_v` (security_invoker)
+  gives the stage with Zite's names and order: Provvigioni teoriche (invoice not paid), maturate (invoice Incassata), fatturate (partner invoice number set), ricevute (`paid_on` set; wins over the rest).
+  Staff read only, no partner policy; written only by the service role or the functions of the next issues (rebuild PRDDISC-20, marks PRDDISC-21). Backfill of Zite `Provvigioni`:
+  `scripts/backfill_commissions.sql` (idempotent; Zite had 0 lines on 2026-10-23).
 - Security advisor, expected warnings: leaked-password protection; `authenticated_security_definer_function_executable` for
   `mark_conversation_read`, `partner_threads`, `staff_colleagues`, `confirm_document_upload`, `remove_document`,
   `notify_document`, `mark_documents_read`, `partner_documents`, `partner_payments` (meant to be called by signed-in users; each checks the
