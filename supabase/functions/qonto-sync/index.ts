@@ -20,7 +20,7 @@
 // - Any error is written to the run row and answered with a non-200 status; invoices already saved stay saved.
 //
 // Settings (Edge Function secrets): QONTO_LOGIN (the Qonto API credential, "organization-slug:secret-key", sent as the
-// Authorization header; never logged). Vault secret qonto_sync_secret (migration 20261023140000).
+// Authorization header; never logged). Vault secret qonto_sync_secret (migration 20261023125951).
 
 import postgres from "npm:postgres@3.4.5";
 
@@ -135,7 +135,7 @@ async function upsert(docs: Doc[]): Promise<{ inserted: number; updated: number 
              r.total_cents, r.vat_cents,
              (select c.id from public.companies c where c.qonto_client_id = r.qonto_client_id),
              r.qonto_client_id, r.description, r.raw, null
-        from jsonb_to_recordset(${JSON.stringify(docs.slice(i, i + CHUNK))}::jsonb) as r(
+        from jsonb_to_recordset(${JSON.stringify(docs.slice(i, i + CHUNK))}::text::jsonb) as r(
           qonto_id text, kind text, number text, status_qonto text, status text, issue_date date, due_date date,
           paid_at date, currency text, total_cents bigint, vat_cents bigint, qonto_client_id text, description text, raw jsonb)
       on conflict (qonto_id) do update set

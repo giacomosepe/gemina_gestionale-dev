@@ -38,7 +38,7 @@ begin
     returning id into d1;
   insert into public.qonto_documents (qonto_id, kind, status_qonto, status, issue_date, total_cents, vat_cents, raw)
     values ('t10-cn-1', 'credit_note', 'unpaid', 'Emessa', date '2026-01-20', -12200, -2200, '{}');
-  insert into public.qonto_sync_runs (fetched_count, inserted_count) values (2, 2);
+  insert into public.qonto_sync_runs (fetched_count, inserted_count) values (7777, 7777);  -- marker: real runs may exist
   reset role;
   select * into r from public.qonto_documents where id = d1;
   ok := r.net_cents = 100000 and r.status = 'Incassata' and r.company_id is null and r.zite_pratica_id is null and r.currency = 'EUR';
@@ -85,7 +85,7 @@ begin
 
   -- removed_at and the run counters exist and default to nothing
   ok := (select removed_at is null from public.qonto_documents where qonto_id = 't10-inv-1')
-        and (select unmatched_count = 0 and skipped_count = 0 and removed_count = 0 from public.qonto_sync_runs limit 1);
+        and (select unmatched_count = 0 and skipped_count = 0 and removed_count = 0 from public.qonto_sync_runs where fetched_count = 7777);
   failures := failures + (not ok)::int;
   report := report || format(E'%s removed_at null by default; run counters start at 0\n', case when ok then 'PASS' else 'FAIL' end);
 
