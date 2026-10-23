@@ -125,8 +125,12 @@ It is the structure of production on 2026-10-19, read from its catalog (producti
   gives the stage with Zite's names and order: Provvigioni teoriche (invoice not paid), maturate (invoice Incassata), fatturate (partner invoice number set), ricevute (`paid_on` set; wins over the rest).
   Staff read only, no partner policy; written only by the service role or the functions of the next issues (rebuild PRDDISC-20, marks PRDDISC-21). Backfill of Zite `Provvigioni`:
   `scripts/backfill_commissions.sql` (idempotent; Zite had 0 lines on 2026-10-23).
+- Marking commissions (migration 20261023223240, test 020): `public.mark_commissions_invoiced(ids, invoice_number, on_date)` (the segnalatore's invoice arrived: matured lines only; number required, date optional) and
+  `public.mark_commissions_paid(ids, on_date)` (Gemina paid the segnalatore: invoiced lines only; date defaults to today in Rome). Staff only (checked inside), security definer, fixed search path, execute for signed-in users only.
+  All the lines of a call succeed or none does (rows locked first); the answer is the lines as `commission_stages_v` shows them (the stage is read from that view). Messages are in Italian, as Zite's. Unlike Zite's endpoints, the stage is checked
+  in the database (Zite checks nothing but the number; its screens only offer the right lines); un-marking a line paid (Zite `pagata: false`) is NOT available yet.
 - Security advisor, expected warnings: leaked-password protection; `authenticated_security_definer_function_executable` for
   `mark_conversation_read`, `partner_threads`, `staff_colleagues`, `confirm_document_upload`, `remove_document`,
-  `notify_document`, `mark_documents_read`, `partner_documents`, `partner_payments` (meant to be called by signed-in users; each checks the
+  `notify_document`, `mark_documents_read`, `partner_documents`, `partner_payments`, `mark_commissions_invoiced`, `mark_commissions_paid` (meant to be called by signed-in users; each checks the
   caller inside).
 - Later: token hook, MFA.
