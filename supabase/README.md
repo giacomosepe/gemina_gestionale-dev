@@ -111,6 +111,10 @@ It is the structure of production on 2026-10-19, read from its catalog (producti
   the document and whenever a pratica is synced; manual links (`private.set_invoice_pratica`, service role only) and links copied from Zite (`scripts/backfill_invoice_pratica.sql`) are never overwritten. `pratica_payment_status_v`:
   `total_fee_cents`, invoiced and paid net (Incassata, credit notes subtracted, cancelled left out), outstanding, `payment_state` partial / fully_paid / overpaid (tolerance 1,000 cents from `private.fully_paid_tolerance_cents()`),
   `needs_review` (overpaid or no total), `archivable` (= fully_paid; whether the pratica is also closed is not decided, `is_open` is in the view).
+- Referrals mirror (migration 20261023154802, test 016): `public.referrals` is a read-only copy of the Zite Segnalazioni (segnalatore x azienda), keyed by the Zite UUID: `partner_id` / `company_id` (resolved from the Zite ids through
+  `partners` / `companies`), `commission_pct`, `starts_on` (Dal), `duration_years`, `ends_on` (Scadenza, as Zite stores it), `removed_at`, `synced_at`; the free-text note is not mirrored. Staff read only (the segnalatore's own view comes
+  with PRDDISC-14). Bridge v10 actions (staff secret): `sync_referral` (one, after a segnalazione is created, edited or deleted in Zite) and `resync_referrals` (repair: all, 150 at most; the missing ones are marked removed, never
+  deleted). `private.referral_active_on(referral, date)` = Zite's `attiva()`: Dal <= date <= Scadenza, an empty side is open, removed or unknown = false.
 - Security advisor, expected warnings: leaked-password protection; `authenticated_security_definer_function_executable` for
   `mark_conversation_read`, `partner_threads`, `staff_colleagues`, `confirm_document_upload`, `remove_document`,
   `notify_document`, `mark_documents_read`, `partner_documents` (meant to be called by signed-in users; each checks the

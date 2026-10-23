@@ -1,4 +1,4 @@
-// portal-bridge (v9)
+// portal-bridge (v10)
 // Lets Zite endpoints use Supabase on behalf of the person logged in to Zite.
 //
 // Trust model:
@@ -39,6 +39,8 @@
 // 2026-10-23 (v9, migration pratiche_mirror, PRDDISC-11): actions sync_pratica and resync_pratiche (staff secret): the Gestionale's
 // server keeps public.pratiche, a read-only mirror of the Zite pratiche (Zite sends the computed total fee and is_open; nothing is
 // recomputed here). resync_pratiche is the repair: it sends every pratica and marks the ones Zite no longer has as removed.
+// 2026-10-23 (v10, migration referrals_mirror, PRDDISC-13): actions sync_referral and resync_referrals (staff secret): the same for the Zite
+// Segnalazioni (segnalatore x azienda, percentage, validity) into public.referrals; a deleted one is marked removed, never deleted.
 
 import postgres from "npm:postgres@3.4.5";
 import { createClient } from "npm:@supabase/supabase-js@2.50.0";
@@ -378,6 +380,48 @@ async function resyncPratiche(audience: Audience, p: Record<string, unknown>) {
   return r.result;
 }
 
+// Referrals mirror (v10). Zite sends the Segnalazione as it stores it (percentage, Dal, duration, Scadenza); this only validates and stores.
+const optDay = (v: unknown, name: string) => {
+  if (v == null || v === "") return null;
+  const d = typeof v === "string" ? v.slice(0, 10) : "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || Number.isNaN(Date.parse(d))) throw new BridgeError(400, `invalid_${name}`);
+  return d;
+};
+const optNumber = (v: unknown, name: string) => {
+  if (v == null || v === "") return null;
+  if (typeof v !== "number" || !Number.isFinite(v)) throw new BridgeError(400, `invalid_${name}`);
+  return v;
+};
+
+function parseReferral(p: Record<string, unknown>) {
+  return {
+    id: uuid(p.zite_referral_id, "zite_referral_id"),
+    zite_segnalatore_id: optText(p.zite_segnalatore_id, "zite_segnalatore_id", 100),
+    zite_azienda_id: optText(p.zite_azienda_id, "zite_azienda_id", 100),
+    commission_pct: optNumber(p.commission_pct, "commission_pct"),
+    starts_on: optDay(p.starts_on, "starts_on"),
+    duration_years: optNumber(p.duration_years, "duration_years"),
+    ends_on: optDay(p.ends_on, "ends_on"),
+    removed: p.removed === true,
+  };
+}
+
+async function syncReferral(audience: Audience, p: Record<string, unknown>) {
+  if (audience !== "staff") throw new BridgeError(403, "staff_only");
+  const row = parseReferral(p);
+  const [r] = await sql`select private.sync_referrals(${JSON.stringify([row])}::text::jsonb, false) as result`;
+  return r.result;
+}
+
+// Repair: every segnalazione of Zite in one call (150 at most: the body limit is 64 KB); any other referral of the mirror is marked removed.
+async function resyncReferrals(audience: Audience, p: Record<string, unknown>) {
+  if (audience !== "staff") throw new BridgeError(403, "staff_only");
+  if (!Array.isArray(p.referrals) || p.referrals.length > 150) throw new BridgeError(400, "invalid_referrals");
+  const rows = p.referrals.map((x) => parseReferral(x as Record<string, unknown>));
+  const [r] = await sql`select private.sync_referrals(${JSON.stringify(rows)}::text::jsonb, true) as result`;
+  return r.result;
+}
+
 // A referrer starts a conversation (portal secret only). The portal's Zite endpoint has already checked that the pratica and
 // azienda are the referrer's; the colleague must be a current staff member. The conversation and the colleague taking part
 // are written with full rights (browsers cannot create referrer conversations); the first message is written AS the referrer,
@@ -599,6 +643,8 @@ Deno.serve(async (req) => {
     if (payload.action === "archive_missing_partners") return reply(200, { ok: true, data: await archiveMissingPartners(audience, payload) });
     if (payload.action === "sync_pratica") return reply(200, { ok: true, data: await syncPratica(audience, payload) });
     if (payload.action === "resync_pratiche") return reply(200, { ok: true, data: await resyncPratiche(audience, payload) });
+    if (payload.action === "sync_referral") return reply(200, { ok: true, data: await syncReferral(audience, payload) });
+    if (payload.action === "resync_referrals") return reply(200, { ok: true, data: await resyncReferrals(audience, payload) });
 
     const email = String(payload.email ?? "").trim().toLowerCase();
     if (!EMAIL.test(email)) throw new BridgeError(400, "invalid_email");
