@@ -6,8 +6,8 @@ do $$
 declare
   org uuid := (select id from public.organizations limit 1);
   u_p uuid := gen_random_uuid(); u_staff uuid := gen_random_uuid(); u_client uuid := gen_random_uuid();
-  pa uuid; pb uuid; cx uuid; cclient uuid;
-  r_a uuid := gen_random_uuid(); r_b uuid := gen_random_uuid();
+  pa uuid; pb uuid; cx uuid; cy uuid; cclient uuid;
+  r_a uuid := gen_random_uuid(); r_b uuid := gen_random_uuid(); r_c uuid := gen_random_uuid();
   d_unpaid uuid; d_paid uuid; d_cancel uuid; d_credit uuid; d_gone uuid; d_inv uuid; d_rec uuid; d_blank uuid; d_half uuid;
   n int; v text; k int;
   report text := ''; failures int := 0; ok boolean;
@@ -24,11 +24,13 @@ begin
   insert into public.partners (zite_segnalatore_id, name, email, organization_id) values ('t18-b', 'T18 B', 't18-b@example.test', org) returning id into pb;
   insert into public.partner_members (partner_id, profile_id) values (pa, u_p);
   insert into public.companies (name, zite_azienda_id, organization_id) values ('T18 X', 't18-x', org) returning id into cx;
+  insert into public.companies (name, zite_azienda_id, organization_id) values ('T18 Y', 't18-y', org) returning id into cy;
   insert into public.companies (name, zite_azienda_id, organization_id) values ('T18 client', 't18-client', org) returning id into cclient;
   insert into public.company_members (company_id, profile_id) values (cclient, u_client);
   perform private.sync_referrals(jsonb_build_array(
     jsonb_build_object('id', r_a, 'zite_segnalatore_id', 't18-a', 'zite_azienda_id', 't18-x', 'commission_pct', 5, 'starts_on', '2027-01-01', 'duration_years', null, 'ends_on', null, 'removed', false),
-    jsonb_build_object('id', r_b, 'zite_segnalatore_id', 't18-b', 'zite_azienda_id', 't18-x', 'commission_pct', 10, 'starts_on', '2027-01-01', 'duration_years', null, 'ends_on', null, 'removed', false)));
+    jsonb_build_object('id', r_b, 'zite_segnalatore_id', 't18-b', 'zite_azienda_id', 't18-x', 'commission_pct', 10, 'starts_on', '2027-01-01', 'duration_years', null, 'ends_on', null, 'removed', false),
+    jsonb_build_object('id', r_c, 'zite_segnalatore_id', 't18-a', 'zite_azienda_id', 't18-y', 'commission_pct', 5, 'starts_on', '2027-01-01', 'duration_years', null, 'ends_on', null, 'removed', false)));
 
   insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, paid_at, total_cents, vat_cents, raw, company_id, removed_at) values
     ('t18-unpaid', 'invoice', 'U1', 'unpaid',   'Emessa',    date '2027-02-10', date '2027-03-10', null,              122000, 22000, '{}', cx, null),
@@ -81,9 +83,10 @@ begin
   begin insert into public.commissions (invoice_id, referral_id, partner_id, pct, base_cents, amount_cents) values (d_gone, r_a, pa, 5, 100000, 5000); exception when check_violation then k := k + 1; end;
   begin insert into public.commissions (invoice_id, referral_id, partner_id, pct, base_cents, amount_cents) values (d_half, r_a, pb, 5, 100000, 5000); exception when check_violation then k := k + 1; end;
   begin insert into public.commissions (invoice_id, referral_id, partner_id, pct, base_cents, amount_cents) values (d_half, r_a, pa, 5, -100, -5); exception when check_violation then k := k + 1; end;
-  ok := k = 5;
+  begin insert into public.commissions (invoice_id, referral_id, partner_id, pct, base_cents, amount_cents) values (d_half, r_c, pa, 5, 100000, 5000); exception when check_violation then k := k + 1; end;
+  ok := k = 6;
   failures := failures + (not ok)::int;
-  report := report || format(E'%s refused: credit note, cancelled invoice, removed invoice, partner that is not the referral''s, negative base (%s of 5)\n', case when ok then 'PASS' else 'FAIL' end, k);
+  report := report || format(E'%s refused: credit note, cancelled invoice, removed invoice, partner that is not the referral''s, negative base, referral of another company (%s of 6)\n', case when ok then 'PASS' else 'FAIL' end, k);
 
   -- rounding: half a cent goes up; the table refuses any other amount
   insert into public.commissions (invoice_id, referral_id, partner_id, pct, base_cents, amount_cents) values (d_half, r_a, pa, 5, 1010, 51);  -- 50.5 cents -> 51
@@ -105,11 +108,12 @@ begin
   begin insert into public.commissions (invoice_id, referral_id, partner_id, pct, base_cents, amount_cents) values (d_paid, r_a, pa, 5, 100000, 5000); exception when unique_violation then k := k + 1; end;
   begin update public.commissions set pct = 6, amount_cents = 6000 where invoice_id = d_paid and referral_id = r_a; exception when check_violation then k := k + 1; end;
   begin update public.commissions set invoice_id = d_unpaid where invoice_id = d_paid and referral_id = r_a; exception when check_violation then k := k + 1; end;
+  begin update public.commissions set base_cents = 200000, amount_cents = 10000 where invoice_id = d_rec and referral_id = r_a; exception when check_violation then k := k + 1; end;
   update public.commissions set base_cents = 120000, amount_cents = 6000 where invoice_id = d_paid and referral_id = r_a;
-  ok := k = 3 and (select pct from public.commissions where invoice_id = d_paid and referral_id = r_a) = 5
+  ok := k = 4 and (select pct from public.commissions where invoice_id = d_paid and referral_id = r_a) = 5
         and (select amount_cents from public.commissions where invoice_id = d_paid and referral_id = r_a) = 6000;
   failures := failures + (not ok)::int;
-  report := report || format(E'%s one line per invoice and referral; the percentage and the links are frozen (%s of 3 refused); the base and amount may follow a corrected invoice\n', case when ok then 'PASS' else 'FAIL' end, k);
+  report := report || format(E'%s one line per invoice and referral; the percentage and the links are frozen (%s of 4 refused, one of them a base change on a received line); the base and amount may follow a corrected invoice until the line is received\n', case when ok then 'PASS' else 'FAIL' end, k);
 
   -- structure and access
   ok := (select relrowsecurity from pg_class where oid = 'public.commissions'::regclass)
