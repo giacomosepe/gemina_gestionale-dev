@@ -115,8 +115,12 @@ It is the structure of production on 2026-10-19, read from its catalog (producti
   `partners` / `companies`), `commission_pct`, `starts_on` (Dal), `duration_years`, `ends_on` (Scadenza, as Zite stores it), `removed_at`, `synced_at`; the free-text note is not mirrored. Staff read only (the segnalatore's own view comes
   with PRDDISC-14). Bridge v10 actions (staff secret): `sync_referral` (one, after a segnalazione is created, edited or deleted in Zite) and `resync_referrals` (repair: all, 150 at most; the missing ones are marked removed, never
   deleted). `private.referral_active_on(referral, date)` = Zite's `attiva()`: Dal <= date <= Scadenza, an empty side is open, removed or unknown = false.
+- What a segnalatore sees of the payments (migration 20261023155528, test 017): `public.partner_payments()` is the only window and the only segnalatore path to the invoices. It returns one row per paid invoice (status Incassata, with a
+  payment date, not a credit note, not cancelled, not removed in Qonto) of a client the calling segnalatore referred, where the referral was active on the invoice's issue date (`private.referral_active_on`; a referral removed in Zite never counts):
+  invoice number and id, company name, pratica code (null if unlinked) and `paid_at`. No amounts, no unpaid or overdue invoices. The caller is checked inside (a current member of a non-archived segnalatore; staff, clients and anyone else get
+  zero rows; anonymous cannot call it); archiving the segnalatore or removing the membership ends it at once. The policies and grants of `qonto_documents`, `referrals` and the views are unchanged (staff only). No bridge action or screen yet.
 - Security advisor, expected warnings: leaked-password protection; `authenticated_security_definer_function_executable` for
   `mark_conversation_read`, `partner_threads`, `staff_colleagues`, `confirm_document_upload`, `remove_document`,
-  `notify_document`, `mark_documents_read`, `partner_documents` (meant to be called by signed-in users; each checks the
+  `notify_document`, `mark_documents_read`, `partner_documents`, `partner_payments` (meant to be called by signed-in users; each checks the
   caller inside).
 - Later: token hook, MFA.
