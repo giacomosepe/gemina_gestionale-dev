@@ -1,4 +1,4 @@
-// message-emails (v2, steps 6 and 7, 2026-10-21)
+// message-emails (v3, PRDDISC-22, 2026-10-25)
 // Emails about referrer (segnalatore) messages, sent by Supabase + Resend instead of Zite (0 Zite runs).
 // Called only by the database (migration 20261021133651): the trigger on messages (mode "message", one conversation,
 // right after Gemina writes) and pg_cron every 5 minutes (mode "sweep"). The call carries the internal secret the
@@ -16,6 +16,10 @@
 //   email to the referrer with the document's name (never its content) and a button to the portal. A file the referrer
 //   shares outside a message gives the team a bell (kind 'document'): unread by anyone at Gemina after 15 minutes, it joins
 //   the same team email as the messages.
+// - Commission matured (v3, migration commission_notices, PRDDISC-22): mode "commission" sends the email of Zite's avvisoProvvigione
+//   ("La tua provvigione è maturata", the text and subject recorded in public.commission_notices) to the segnalatore, once per notice
+//   (claimed with email_claimed_at, marked emailed_at; a failed send is released and the 5-minute sweep tries again, for two days).
+//   The notices exist only while the setting 'commission_notices' is on (it is off until the cutover).
 // - Real referrer addresses only where the project allows them (PARTNER_EMAILS_REAL=true in production,
 //   DEV_TEST_PARTNER_EMAILS in dev), as the bridge. Placeholders (@example.test) never.
 // - Each conversation/notification is claimed in the database before sending; if Resend fails it is released, so the
@@ -297,6 +301,50 @@ async function reminderEmails(): Promise<number> {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
+// A commission matured (PRDDISC-22): the email of Zite's avvisoProvvigione. The database recorded the notice (subject and text) in
+// public.commission_notices; here it is sent once. An archived referrer or a placeholder address is marked "skipped" (nobody to email).
+// ---------------------------------------------------------------------------------------------------------------------------
+async function commissionEmails(commissionId: string | null): Promise<number> {
+  const due = await sql`
+    with cand as (
+      select n.commission_id
+        from public.commission_notices n
+       where n.emailed_at is null
+         and (n.email_claimed_at is null or n.email_claimed_at < now() - interval '10 minutes')
+         and n.created_at > now() - interval '2 days'
+         and (${commissionId}::uuid is null or n.commission_id = ${commissionId}::uuid)
+       for update of n skip locked)
+    update public.commission_notices n set email_claimed_at = now()
+      from cand, public.partners pa
+     where n.commission_id = cand.commission_id and pa.id = n.partner_id
+    returning n.commission_id, n.title, n.body, pa.email, pa.archived`;
+  let sent = 0;
+  for (const c of due) {
+    if (c.archived || !referrerAddressAllowed(c.email)) {
+      await sql`update public.commission_notices set emailed_at = now(), email_result = 'skipped' where commission_id = ${c.commission_id}`;
+      continue;
+    }
+    const ok = await send({
+      from: FROM_REFERRER, to: c.email, replyTo: REPLY_TO_REFERRER,
+      subject: oneLine(c.title, 200),
+      email: {
+        titolo: "La tua provvigione è maturata",
+        paragrafi: [c.body],
+        pulsante: { etichetta: "Apri il portale", url: URL_PORTALE },
+        piede: "Messaggio automatico di Gemina Advisory: per rispondere usa il portale.",
+      },
+    });
+    if (ok) {
+      sent++;
+      await sql`update public.commission_notices set emailed_at = now(), email_result = 'sent' where commission_id = ${c.commission_id}`;
+    } else {
+      await sql`update public.commission_notices set email_claimed_at = null where commission_id = ${c.commission_id}`;
+    }
+  }
+  return sent;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
 Deno.serve(async (req) => {
   if (req.method !== "POST") return reply(405, { ok: false, error: "method_not_allowed" });
   if (!RESEND_API_KEY) return reply(500, { ok: false, error: "resend_not_configured" });
@@ -304,7 +352,7 @@ Deno.serve(async (req) => {
   if (!s?.decrypted_secret || !safeEqual(req.headers.get("x-email-secret") ?? "", s.decrypted_secret)) {
     return reply(401, { ok: false, error: "unauthorized" });
   }
-  let body: { mode?: string; conversation_id?: string | null; document_id?: string | null };
+  let body: { mode?: string; conversation_id?: string | null; document_id?: string | null; commission_id?: string | null };
   try { body = await req.json(); } catch { return reply(400, { ok: false, error: "invalid_json" }); }
 
   try {
@@ -319,10 +367,15 @@ Deno.serve(async (req) => {
     if (body.mode === "reminders") {
       return reply(200, { ok: true, team: await reminderEmails() });
     }
+    if (body.mode === "commission") {
+      if (typeof body.commission_id !== "string") return reply(400, { ok: false, error: "commission_id_required" });
+      return reply(200, { ok: true, referrer: await commissionEmails(body.commission_id) });
+    }
     if (body.mode === "sweep") {
-      // reminders again: a send that failed in the morning is retried every 5 minutes for a day
+      // reminders again: a send that failed in the morning is retried every 5 minutes for a day; so are the commission emails
       const [referrer, team, reminders] = [await referrerEmails(null), await teamEmails(), await reminderEmails()];
-      return reply(200, { ok: true, referrer, team, reminders });
+      const commissions = await commissionEmails(null);
+      return reply(200, { ok: true, referrer, team, reminders, commissions });
     }
     return reply(400, { ok: false, error: "unknown_mode" });
   } catch (e) {
