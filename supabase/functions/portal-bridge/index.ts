@@ -1,4 +1,4 @@
-// portal-bridge (v13)
+// portal-bridge (v14)
 // Lets Zite endpoints use Supabase on behalf of the person logged in to Zite.
 //
 // Trust model:
@@ -43,6 +43,7 @@
 // Segnalazioni (segnalatore x azienda, percentage, validity) into public.referrals; a deleted one is marked removed, never deleted.
 // 2026-10-25 (v12): sync_pratica / resync_pratiche also carry the pratica title (migration pratiche_title); absent = stored title kept.
 // 2026-10-25 (v13): a blank title (spaces only) clears the stored one instead of being rejected as invalid_title.
+// 2026-10-25 (v14, migration partners_vat_rate, PRDDISC-25): sync_partner also carries vat_rate (the segnalatore's IVA rate for the cash flow); key absent = kept.
 // 2026-10-23 (v11, PRDDISC-18): action run_qonto_sync (staff secret, caller must be an admin): the Gestionale's "Importa fatture ora" button.
 // The bridge calls the qonto-sync Edge Function with that function's own secret (read from the Vault here, never sent to a browser or to Zite)
 // and returns only the counts of the run. Refused while another run started in the last 5 minutes is still going.
@@ -356,11 +357,17 @@ async function syncPartner(audience: Audience, p: Record<string, unknown>) {
   const email = !given || removed ? null
     : PARTNER_EMAILS_REAL || DEV_TEST_PARTNER_EMAILS.has(given) ? given
     : `segnalatore-${ziteId.replace(/[^A-Za-z0-9]/g, "").slice(0, 12)}@example.test`;
+  // v14 (PRDDISC-25): the IVA rate of the segnalatore for the cash flow. Key absent = an older caller: both columns stay as they are.
+  const hasRate = Object.hasOwn(p, "vat_rate");
+  const rate = hasRate ? optNumber(p.vat_rate, "vat_rate") : null;
+  if (rate != null && (rate < 0 || rate > 100)) throw new BridgeError(400, "invalid_vat_rate");
   const [row] = await sql`
-    insert into public.partners (zite_segnalatore_id, name, email, archived)
-    values (${ziteId}, ${name}, ${email}, ${archived})
+    insert into public.partners (zite_segnalatore_id, name, email, archived, vat_rate, vat_rate_synced_at)
+    values (${ziteId}, ${name}, ${email}, ${archived}, ${rate}, case when ${hasRate}::boolean then now() end)
     on conflict (zite_segnalatore_id) do update
-      set name = excluded.name, email = excluded.email, archived = excluded.archived
+      set name = excluded.name, email = excluded.email, archived = excluded.archived,
+          vat_rate = case when ${hasRate}::boolean then excluded.vat_rate else public.partners.vat_rate end,
+          vat_rate_synced_at = case when ${hasRate}::boolean then excluded.vat_rate_synced_at else public.partners.vat_rate_synced_at end
     returning id, archived`;
   // Access ends now, not at the person's next call: drop the memberships of an archived referrer, and of any
   // profile whose address is no longer the referrer's (an email change).
