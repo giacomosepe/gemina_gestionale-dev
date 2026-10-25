@@ -70,9 +70,9 @@ begin
   -- 4. the line shows in commission_lines_v with the Zite ids and the pratica code
   select * into res from public.commission_lines_v where invoice_id = d1;
   ok := res.zite_segnalatore_id = 't22-a' and res.zite_azienda_id = 't22-x' and res.pratica_code = 'T22-X1' and res.stage = 'Provvigioni teoriche'
-        and res.invoice_net_cents = 100000 and res.invoice_kind = 'invoice';
+        and res.invoice_net_cents = 100000 and res.invoice_kind = 'invoice' and res.invoice_qonto_id = 't22-1';
   failures := failures + (not ok)::int;
-  report := report || format(E'%s commission_lines_v: Zite ids of segnalatore and azienda, pratica code, stage, invoice net\n', case when ok then 'PASS' else 'FAIL' end);
+  report := report || format(E'%s commission_lines_v: Zite ids of segnalatore and azienda, pratica code, stage, invoice net and Qonto id\n', case when ok then 'PASS' else 'FAIL' end);
 
   -- 5. relink to the other pratica of the azienda: the link moves, still one line
   select * into res from public.link_invoice_to_pratica(d1, p_x2);

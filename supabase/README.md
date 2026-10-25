@@ -142,7 +142,7 @@ It is the structure of production on 2026-10-19, read from its catalog (producti
   `public.link_invoice_to_pratica(invoice, pratica)` and `public.unlink_invoice_pratica(invoice)`; staff only, security definer, fixed search path, execute for signed-in users only. A link is `manual`
   (the automatic rule and the Qonto sync never change it; an unlink is a manual link to nothing, so the invoice is not listed in `review_invoices_v` again). Linking fires the commission rebuild;
   unlinking removes unpaid, un-invoiced lines and keeps the others. Unlike Zite, a pratica of another azienda is refused (the sync would put the invoice's azienda back), as is an invoice without azienda.
-  `public.commission_lines_v` (security_invoker): `commission_stages_v` plus `zite_segnalatore_id`, `zite_azienda_id`, `company_name`, `pratica_code`, `invoice_kind`, `invoice_net_cents`, for the Gestionale segnalatore screens.
+  `public.commission_lines_v` (security_invoker; migrations 20261025145419 and 20261025145907): `commission_stages_v` plus `zite_segnalatore_id`, `zite_azienda_id`, `company_name`, `pratica_code`, `invoice_kind`, `invoice_net_cents`, `invoice_qonto_id`, for the Gestionale segnalatore screens.
 - Security advisor, expected warnings: leaked-password protection; `authenticated_security_definer_function_executable` for
   `mark_conversation_read`, `partner_threads`, `staff_colleagues`, `confirm_document_upload`, `remove_document`,
   `notify_document`, `mark_documents_read`, `partner_documents`, `partner_payments`, `rebuild_all_commissions`, `mark_commissions_invoiced`, `mark_commissions_paid`, `invoice_pratica_options`, `link_invoice_to_pratica`, `unlink_invoice_pratica` (meant to be called by signed-in users; each checks the
