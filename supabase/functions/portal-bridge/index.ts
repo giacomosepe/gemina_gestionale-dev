@@ -41,6 +41,7 @@
 // recomputed here). resync_pratiche is the repair: it sends every pratica and marks the ones Zite no longer has as removed.
 // 2026-10-23 (v10, migration referrals_mirror, PRDDISC-13): actions sync_referral and resync_referrals (staff secret): the same for the Zite
 // Segnalazioni (segnalatore x azienda, percentage, validity) into public.referrals; a deleted one is marked removed, never deleted.
+// 2026-10-25 (v12): sync_pratica / resync_pratiche also carry the pratica title (migration pratiche_title); absent = stored title kept.
 // 2026-10-23 (v11, PRDDISC-18): action run_qonto_sync (staff secret, caller must be an admin): the Gestionale's "Importa fatture ora" button.
 // The bridge calls the qonto-sync Edge Function with that function's own secret (read from the Vault here, never sent to a browser or to Zite)
 // and returns only the counts of the run. Refused while another run started in the last 5 minutes is still going.
@@ -391,6 +392,8 @@ function parsePratica(p: Record<string, unknown>) {
   return {
     id: uuid(p.zite_pratica_id, "zite_pratica_id"),
     code: optText(p.code, "code", 100),
+    // title: absent = leave the stored one (an older caller); null = clear it (JSON.stringify drops undefined)
+    title: p.title === undefined ? undefined : optText(p.title, "title", 300),
     zite_azienda_id: optText(p.zite_azienda_id, "zite_azienda_id", 100),
     status: optText(p.status, "status", 100),
     is_open: p.is_open,
