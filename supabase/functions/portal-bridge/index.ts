@@ -1,4 +1,4 @@
-// portal-bridge (v11)
+// portal-bridge (v12)
 // Lets Zite endpoints use Supabase on behalf of the person logged in to Zite.
 //
 // Trust model:
