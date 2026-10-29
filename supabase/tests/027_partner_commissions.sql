@@ -67,7 +67,7 @@ begin
 
   -- structure: columns, grants, nothing staff-only
   select string_agg(a, ',' order by o) into cols from unnest((select proargnames from pg_proc where oid = 'public.partner_commissions()'::regprocedure)) with ordinality t(a, o);
-  ok := cols = 'id,invoice_id,invoice_number,invoice_issue_date,invoice_paid_at,invoice_net_cents,pratica_id,pratica_code,pratica_title,pct,base_cents,amount_cents,partner_invoice_number,partner_invoiced_on,paid_on,stage,stage_order,zite_azienda_id,company_name'
+  ok := cols = 'id,invoice_id,invoice_number,invoice_issue_date,invoice_paid_at,invoice_net_cents,pratica_id,pratica_code,pratica_title,pct,base_cents,amount_cents,partner_invoice_number,partner_invoiced_on,paid_on,stage,stage_order,zite_azienda_id,company_name,invoice_cancelled'
         and cols !~ 'partner_id|partner_name|referral_id|qonto_id|invoice_status|raw|vat|total'
         and has_function_privilege('authenticated', 'public.partner_commissions()', 'execute') and not has_function_privilege('anon', 'public.partner_commissions()', 'execute')
         and has_function_privilege('authenticated', 'public.partner_pratica_invoiced()', 'execute') and not has_function_privilege('anon', 'public.partner_pratica_invoiced()', 'execute');
@@ -81,17 +81,17 @@ begin
   -- expected stages of A's lines, read as the table owner (commission_stages_v is staff-only for a signed-in segnalatore)
   select string_agg(s.id || ':' || s.stage || ':' || s.stage_order, ',' order by s.id) into v_expected
     from public.commission_stages_v s join public.qonto_documents d on d.id = s.invoice_id
-   where s.partner_id = pa and s.invoice_status <> 'Annullata' and d.removed_at is null;
+   where s.partner_id = pa;
 
   -- A: only A's lines, stage as commission_stages_v says, cancelled and removed left out
   perform set_config('request.jwt.claims', json_build_object('sub', u_a, 'role', 'authenticated')::text, true);
   set local role authenticated;
   select string_agg(invoice_number, ',' order by invoice_number) into v from public.partner_commissions();
-  ok := v = 'X1,X2,X3,X4,X7';
+  ok := v = 'X1,X2,X3,X4,X5,X6,X7';
   failures := failures + (not ok)::int;
-  report := report || format(E'%s A sees only A''s lines: X1,X2,X3,X4,X7 (got %s); not X5 (cancelled), X6 (removed), W1 (not A''s client), nor B''s lines\n', case when ok then 'PASS' else 'FAIL' end, v);
+  report := report || format(E'%s A sees only A''s lines: X1..X7 (got %s): X5 (cancelled) and X6 (removed) stay because already invoiced; not W1 (not A''s client), nor B''s lines\n', case when ok then 'PASS' else 'FAIL' end, v);
   select string_agg(invoice_number || '=' || stage, ',' order by invoice_number) into v from public.partner_commissions();
-  ok := v = 'X1=Provvigioni teoriche,X2=Provvigioni maturate,X3=Provvigioni fatturate,X4=Provvigioni ricevute,X7=Provvigioni teoriche';
+  ok := v = 'X1=Provvigioni teoriche,X2=Provvigioni maturate,X3=Provvigioni fatturate,X4=Provvigioni ricevute,X5=Provvigioni fatturate,X6=Provvigioni fatturate,X7=Provvigioni teoriche';
   failures := failures + (not ok)::int;
   report := report || format(E'%s the four stages come out right (got %s)\n', case when ok then 'PASS' else 'FAIL' end, v);
   ok := v_expected is not null and v_expected = (select string_agg(f.id || ':' || f.stage || ':' || f.stage_order, ',' order by f.id) from public.partner_commissions() f);
@@ -101,7 +101,9 @@ begin
   ok := r.pratica_code = 'T27-OPEN' and r.pratica_title = 'Titolo aperto' and r.company_name = 'T27 X' and r.zite_azienda_id = 't27-x' and r.pct = 20
         and r.base_cents = 100000 and r.invoice_net_cents = 100000 and r.amount_cents = 20000
         and r.partner_invoice_number = 'FP-3' and r.partner_invoiced_on = date '2027-03-10' and r.paid_on = date '2027-03-20'
-        and r.invoice_issue_date = date '2027-02-04' and r.invoice_paid_at = date '2027-03-03' and r.stage_order = 4;
+        and r.invoice_issue_date = date '2027-02-04' and r.invoice_paid_at = date '2027-03-03' and r.stage_order = 4 and not r.invoice_cancelled
+        and (select invoice_cancelled from public.partner_commissions() where invoice_number = 'X5') and (select invoice_cancelled from public.partner_commissions() where invoice_number = 'X6')
+        and not (select invoice_cancelled from public.partner_commissions() where invoice_number = 'X1');
   failures := failures + (not ok)::int;
   report := report || format(E'%s a line carries company, pratica code and title, percentage, base, amount, invoice and own-invoice dates, paid_on\n', case when ok then 'PASS' else 'FAIL' end);
   ok := (select count(*) from public.commissions) = 0 and (select count(*) from public.commission_lines_v) = 0 and (select count(*) from public.pratica_payment_status_v) = 0;
@@ -114,14 +116,14 @@ begin
   select string_agg(pratica_id::text || '=' || invoiced_net_cents, ',') into v from public.partner_pratica_invoiced();
   ok := v = p_open::text || '=' || (4 * 100000 - 10000);     -- X1..X4 (X5 cancelled, X6 removed in Qonto), the credit note XC -10000; X7 is on the closed pratica
   failures := failures + (not ok)::int;
-  report := report || format(E'%s A gets the invoiced net of the open pratica of X only (cancelled and removed left out, credit note subtracted; got %s)\n', case when ok then 'PASS' else 'FAIL' end, v);
+  report := report || format(E'%s A gets the invoiced net of the open pratica of X only (cancelled and removed invoices do not count, credit note subtracted; got %s)\n', case when ok then 'PASS' else 'FAIL' end, v);
   reset role;
 
   -- B: own lines only (X lines at 10%, W1); C and A see none of them
   perform set_config('request.jwt.claims', json_build_object('sub', u_b, 'role', 'authenticated')::text, true);
   set local role authenticated;
   select string_agg(invoice_number || ':' || pct, ',' order by invoice_number) into v from public.partner_commissions();
-  ok := v = 'W1:10,X1:10,X2:10,X3:10,X4:10,X7:10';
+  ok := v = 'W1:10,X1:10,X2:10,X3:10,X4:10,X5:10,X6:10,X7:10';
   failures := failures + (not ok)::int;
   report := report || format(E'%s B sees B''s own lines at B''s percentage (got %s)\n', case when ok then 'PASS' else 'FAIL' end, v);
   select count(*) into n from public.partner_pratica_invoiced();
