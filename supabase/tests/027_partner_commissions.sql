@@ -1,7 +1,8 @@
 -- What a segnalatore sees of commissions and invoiced amounts (migration partner_commissions, PRDDISC-32): public.partner_commissions() and
 -- public.partner_pratica_invoiced(). Same pattern as 017: one DO block, everything rolled back by the final RAISE. Made-up rows only (2027 dates).
 -- Commission lines are created by the rebuild triggers (invoice or referral saved); the test only moves them to the stage it needs.
--- Segnalatori: A (active referral on X, pct 20), B (referral on X pct 10, and on W), C (archived later; referral on W). Staff, a client, anonymous.
+-- Referrals start a year before the run and W1 is issued 30 days before it, so they are active today whenever the test runs (the aggregate checks current_date);
+-- ending B's W referral yesterday still covers W1's issue date, so its line stays. Segnalatori: A (active referral on X, pct 20), B (referral on X pct 10, and on W), C (archived later; referral on W). Staff, a client, anonymous.
 -- NOT RUN when written (no database in the session): run it on production in its rolling-back transaction, then fix what it finds.
 
 do $$
@@ -13,7 +14,7 @@ declare
   cx uuid; cw uuid; cclient uuid;
   p_open uuid := gen_random_uuid(); p_closed uuid := gen_random_uuid(); p_w uuid := gen_random_uuid();
   r_ax uuid := gen_random_uuid(); r_bx uuid := gen_random_uuid(); r_bw uuid := gen_random_uuid(); r_cw uuid := gen_random_uuid();
-  v text; cols text; n int;
+  v text; v_expected text; cols text; n int;
   report text := ''; failures int := 0; ok boolean;
   r record;
 begin
@@ -38,10 +39,10 @@ begin
     jsonb_build_object('id', p_closed, 'code', 'T27-CLOSED', 'zite_azienda_id', 't27-x', 'status', 'Chiusa', 'is_open', false, 'total_fee_cents', 100000, 'removed', false),
     jsonb_build_object('id', p_w,      'code', 'T27-W',      'zite_azienda_id', 't27-w', 'status', 'In lavorazione', 'is_open', true,  'total_fee_cents', 300000, 'removed', false)));
   perform private.sync_referrals(jsonb_build_array(
-    jsonb_build_object('id', r_ax, 'zite_segnalatore_id', 't27-a', 'zite_azienda_id', 't27-x', 'commission_pct', 20, 'starts_on', '2027-01-01', 'duration_years', null, 'ends_on', null, 'removed', false),
-    jsonb_build_object('id', r_bx, 'zite_segnalatore_id', 't27-b', 'zite_azienda_id', 't27-x', 'commission_pct', 10, 'starts_on', '2027-01-01', 'duration_years', null, 'ends_on', null, 'removed', false),
-    jsonb_build_object('id', r_bw, 'zite_segnalatore_id', 't27-b', 'zite_azienda_id', 't27-w', 'commission_pct', 10, 'starts_on', '2027-01-01', 'duration_years', null, 'ends_on', null, 'removed', false),
-    jsonb_build_object('id', r_cw, 'zite_segnalatore_id', 't27-c', 'zite_azienda_id', 't27-w', 'commission_pct', 5,  'starts_on', '2027-01-01', 'duration_years', null, 'ends_on', null, 'removed', false)));
+    jsonb_build_object('id', r_ax, 'zite_segnalatore_id', 't27-a', 'zite_azienda_id', 't27-x', 'commission_pct', 20, 'starts_on', (current_date - 365)::text, 'duration_years', null, 'ends_on', null, 'removed', false),
+    jsonb_build_object('id', r_bx, 'zite_segnalatore_id', 't27-b', 'zite_azienda_id', 't27-x', 'commission_pct', 10, 'starts_on', (current_date - 365)::text, 'duration_years', null, 'ends_on', null, 'removed', false),
+    jsonb_build_object('id', r_bw, 'zite_segnalatore_id', 't27-b', 'zite_azienda_id', 't27-w', 'commission_pct', 10, 'starts_on', (current_date - 365)::text, 'duration_years', null, 'ends_on', null, 'removed', false),
+    jsonb_build_object('id', r_cw, 'zite_segnalatore_id', 't27-c', 'zite_azienda_id', 't27-w', 'commission_pct', 5,  'starts_on', (current_date - 365)::text, 'duration_years', null, 'ends_on', null, 'removed', false)));
 
   -- X (A 20%, B 10%): X1 unpaid (teoriche), X2 paid (maturate), X3 paid + partner invoice (fatturate), X4 paid + partner invoice + paid_on (ricevute),
   --                   X5 paid + partner invoice, then cancelled; X6 paid + partner invoice, then removed in Qonto; XC a credit note (no line);
@@ -55,7 +56,7 @@ begin
     ('t27-x6', 'invoice', 'X6', 'paid',   'Incassata', date '2027-02-06', date '2027-03-06', date '2027-03-05', 122000, 22000, '{}', cx, p_open,   'zite'),
     ('t27-xc', 'credit_note', 'XC', 'credit_note', 'Incassata', date '2027-02-07', date '2027-02-07', null,     -12200, -2200, '{}', cx, p_open,   'zite'),
     ('t27-x7', 'invoice', 'X7', 'unpaid', 'Emessa',    date '2027-02-08', date '2027-03-08', null,               61000, 11000, '{}', cx, p_closed, 'zite'),
-    ('t27-w1', 'invoice', 'W1', 'paid',   'Incassata', date '2027-02-09', date '2027-03-09', date '2027-03-06', 244000, 44000, '{}', cw, p_w,      'zite');
+    ('t27-w1', 'invoice', 'W1', 'paid',   'Incassata', current_date - 30, current_date, current_date - 20, 244000, 44000, '{}', cw, p_w,      'zite');
 
   -- put each line in its stage (the rebuild created the lines when the invoices were saved)
   update public.commissions c set partner_invoice_number = 'FP-3', partner_invoiced_on = date '2027-03-10'
@@ -77,6 +78,11 @@ begin
   failures := failures + (not ok)::int;
   report := report || format(E'%s commissions is untouched: still one staff-only policy, no write for signed-in users, no anonymous read\n', case when ok then 'PASS' else 'FAIL' end);
 
+  -- expected stages of A's lines, read as the table owner (commission_stages_v is staff-only for a signed-in segnalatore)
+  select string_agg(s.id || ':' || s.stage || ':' || s.stage_order, ',' order by s.id) into v_expected
+    from public.commission_stages_v s join public.qonto_documents d on d.id = s.invoice_id
+   where s.partner_id = pa and s.invoice_status <> 'Annullata' and d.removed_at is null;
+
   -- A: only A's lines, stage as commission_stages_v says, cancelled and removed left out
   perform set_config('request.jwt.claims', json_build_object('sub', u_a, 'role', 'authenticated')::text, true);
   set local role authenticated;
@@ -88,7 +94,7 @@ begin
   ok := v = 'X1=Provvigioni teoriche,X2=Provvigioni maturate,X3=Provvigioni fatturate,X4=Provvigioni ricevute,X7=Provvigioni teoriche';
   failures := failures + (not ok)::int;
   report := report || format(E'%s the four stages come out right (got %s)\n', case when ok then 'PASS' else 'FAIL' end, v);
-  ok := (select count(*) from public.partner_commissions() f join public.commission_stages_v s on s.id = f.id where f.stage = s.stage and f.stage_order = s.stage_order) = 5;
+  ok := v_expected is not null and v_expected = (select string_agg(f.id || ':' || f.stage || ':' || f.stage_order, ',' order by f.id) from public.partner_commissions() f);
   failures := failures + (not ok)::int;
   report := report || format(E'%s the stage of each returned line equals the one of commission_stages_v\n', case when ok then 'PASS' else 'FAIL' end);
   select * into r from public.partner_commissions() where invoice_number = 'X4';
