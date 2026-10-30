@@ -1,4 +1,4 @@
-// qonto-sync (v1, PRDDISC-4, 2026-10-23)
+// qonto-sync (v1, PRDDISC-4, 2026-10-23; v2 2026-10-30, PRDDISC-34: the run answers with the unmatched count the database stored after linking by VAT number)
 // Fetches the invoices and credit notes of the Qonto third-party API and upserts them into public.qonto_documents,
 // logging every run in public.qonto_sync_runs. Read-only toward Qonto (GET only). Zite keeps its own sync unchanged.
 //
@@ -159,9 +159,13 @@ async function upsert(docs: Doc[]): Promise<{ inserted: number; updated: number 
 async function run(runId: string) {
   const counts = { fetched: 0, inserted: 0, updated: 0, unmatched: 0, skipped: 0, removed: 0 };
   const save = async (error: string | null) => {
-    await sql`update public.qonto_sync_runs set finished_at = now(), fetched_count = ${counts.fetched},
+    const [row] = await sql`update public.qonto_sync_runs set finished_at = now(), fetched_count = ${counts.fetched},
                 inserted_count = ${counts.inserted}, updated_count = ${counts.updated}, unmatched_count = ${counts.unmatched},
-                skipped_count = ${counts.skipped}, removed_count = ${counts.removed}, error = ${error} where id = ${runId}`;
+                skipped_count = ${counts.skipped}, removed_count = ${counts.removed}, error = ${error} where id = ${runId}
+                returning unmatched_count`;
+    // PRDDISC-34: when a run ends without error the database links the invoices it can by VAT number (trigger on this update) and rewrites
+    // unmatched_count afterwards. The count computed above is from before that, so the answer of the run (and the Gestionale's button) takes the stored one.
+    if (row && typeof row.unmatched_count === "number") counts.unmatched = row.unmatched_count;
   };
   try {
     if (!QONTO_LOGIN) throw new Error("QONTO_LOGIN is not set");
