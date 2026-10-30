@@ -6,6 +6,7 @@ declare
   org uuid := (select id from public.organizations limit 1);
   u_mgr uuid := gen_random_uuid(); u_part uuid := gen_random_uuid(); u_client uuid := gen_random_uuid();
   pa uuid; cclient uuid; rf uuid := gen_random_uuid(); p_t uuid := gen_random_uuid();
+  c_z1 uuid; c_z2 uuid; c_w uuid; dz uuid; dw1 uuid; dw2 uuid;
   c_a uuid; c_b uuid; c_c uuid; c_d1 uuid; c_d2 uuid; c_g uuid; c_h uuid; c_i uuid; c_t uuid; c_u0 uuid; c_v uuid; c_y1 uuid; c_y2 uuid; c_r uuid; c_s uuid; c_e uuid;
   da uuid; da2 uuid; db uuid; dc uuid; dd uuid; dd2 uuid; de uuid; df uuid; dg uuid; dh uuid; di uuid; dt uuid; du uuid; dr uuid; ds uuid;
   run1 uuid; run2 uuid; res jsonb; r record; k int; n int; msg text;
@@ -49,6 +50,9 @@ begin
   insert into public.companies (name, zite_azienda_id, organization_id, vat_number) values ('T28 Rho', 't28-r', org, 'IT90000000120') returning id into c_r;
   insert into public.companies (name, zite_azienda_id, organization_id, vat_number) values ('T28 Sigma', 't28-s', org, '90000000130') returning id into c_s;
   insert into public.companies (name, zite_azienda_id, organization_id, vat_number) values ('T28 Epsilon blank', 't28-e', org, '   ') returning id into c_e;
+  insert into public.companies (name, zite_azienda_id, organization_id, vat_number) values ('T28 Zeta uno', 't28-z1', org, '90000000140') returning id into c_z1;
+  insert into public.companies (name, zite_azienda_id, organization_id, vat_number, qonto_client_id) values ('T28 Zeta due', 't28-z2', org, '90000000141', 'qc-z') returning id into c_z2;
+  insert into public.companies (name, zite_azienda_id, organization_id, vat_number) values ('T28 Omega', 't28-w', org, '90000000150') returning id into c_w;
   ok := (select vat_number from public.companies where id = c_a) = '90000000011' and (select vat_number from public.companies where id = c_b) = '90000000022'
         and (select vat_number from public.companies where id = c_c) = '90000000033' and (select vat_number from public.companies where id = c_d2) = '90000000044'
         and (select vat_number from public.companies where id = c_t) = '90000000099' and (select vat_number from public.companies where id = c_h) = 'FR90000000077'
@@ -82,6 +86,14 @@ begin
   select id into de from public.qonto_documents where qonto_id = 't28-e'; select id into df from public.qonto_documents where qonto_id = 't28-f';
   select id into dg from public.qonto_documents where qonto_id = 't28-g'; select id into dh from public.qonto_documents where qonto_id = 't28-h';
   select id into di from public.qonto_documents where qonto_id = 't28-i'; select id into dt from public.qonto_documents where qonto_id = 't28-t';
+  -- the Qonto client of dz is already held by ANOTHER company (c_z2) while the VAT points to c_z1; dw1/dw2 are two Qonto clients without VAT
+  insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, total_cents, vat_cents, raw, qonto_client_id)
+    values ('t28-z', 'invoice', 'V15', 'unpaid', 'Emessa', date '2027-02-01', date '2027-03-01', 122000, 22000,
+            jsonb_build_object('client', jsonb_build_object('id', 'qc-z', 'name', 'Zeta Testing', 'vat_number', 'IT90000000140')), 'qc-z'),
+           ('t28-w1', 'invoice', 'V16', 'unpaid', 'Emessa', date '2027-02-01', date '2027-03-01', 122000, 22000, jsonb_build_object('client', jsonb_build_object('id', 'qc-w1', 'name', 'Omega primo')), 'qc-w1'),
+           ('t28-w2', 'invoice', 'V17', 'unpaid', 'Emessa', date '2027-02-01', date '2027-03-01', 122000, 22000, jsonb_build_object('client', jsonb_build_object('id', 'qc-w2', 'name', 'Omega secondo')), 'qc-w2');
+  select id into dz from public.qonto_documents where qonto_id = 't28-z'; select id into dw1 from public.qonto_documents where qonto_id = 't28-w1';
+  select id into dw2 from public.qonto_documents where qonto_id = 't28-w2';
   -- an invoice that already has a company (of another VAT): the matching must not touch it
   insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, total_cents, vat_cents, raw, qonto_client_id, company_id)
     values ('t28-u', 'invoice', 'V11', 'unpaid', 'Emessa', date '2027-02-01', date '2027-03-01', 122000, 22000,
@@ -186,6 +198,24 @@ begin
         and (select company_id = c_a from public.qonto_documents where id = da);
   failures := failures + (not ok)::int;
   report := report || format(E'%s refused: a company with another Qonto id (not replaced), an invoice that already has a company, a Qonto client already held by another company, an unknown invoice, an unknown company (%s of 5); nothing changed\n', case when ok then 'PASS' else 'FAIL' end, k);
+
+  -- the Qonto client is held by another company: the matching did not link it (and did not take the id), the list says so, the staff action refuses
+  k := 0;
+  begin perform public.link_invoice_to_company(dz, c_z1); exception when sqlstate '22023' then if sqlerrm like 'Questo cliente Qonto è già collegato a un''altra azienda%' then k := 1; end if; end;
+  ok := k = 1 and (select company_id is null from public.qonto_documents where id = dz) and (select qonto_client_id is null from public.companies where id = c_z1)
+        and (select qonto_client_id = 'qc-z' from public.companies where id = c_z2)
+        and (select reason_code from public.invoices_to_link_v where id = dz) = 'other_qonto_client';
+  failures := failures + (not ok)::int;
+  report := report || format(E'%s a Qonto client already held by another company: not linked, the company does not take the id, the list says other_qonto_client (not "to_be_linked"), the staff action refuses\n', case when ok then 'PASS' else 'FAIL' end);
+
+  -- an empty company takes the first Qonto client linked to it; a second Qonto client is refused afterwards (the lock makes this hold under concurrency too)
+  select count(*) into n from public.link_invoice_to_company(dw1, c_w);
+  k := 0;
+  begin perform public.link_invoice_to_company(dw2, c_w); exception when sqlstate '22023' then if sqlerrm like 'L''azienda è già collegata a un altro cliente Qonto%' then k := 1; end if; end;
+  ok := n = 1 and k = 1 and (select qonto_client_id = 'qc-w1' from public.companies where id = c_w) and (select company_id = c_w from public.qonto_documents where id = dw1)
+        and (select company_id is null from public.qonto_documents where id = dw2);
+  failures := failures + (not ok)::int;
+  report := report || format(E'%s an empty company takes the Qonto client of the first invoice linked to it; an invoice of a second Qonto client is then refused and stays unlinked\n', case when ok then 'PASS' else 'FAIL' end);
 
   -- an invoice with no Qonto client id: only that invoice is linked, no id is written
   reset role;

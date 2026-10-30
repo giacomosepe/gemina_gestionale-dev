@@ -1,7 +1,8 @@
 -- Match Qonto invoices to companies by VAT number, and the list of invoices still to link (Linear PRDDISC-34, milestone M5).
 -- A client created by hand in Qonto has no companies.qonto_client_id, so its invoices were stored with company_id null (real case 30 Oct 2026: GA005,
 -- G.T.B. DI TOMOLA...). Qonto sends the VAT number as "IT01122290032"; our companies hold the 11 plain digits. Additive: functions, two triggers, a view.
--- No policy changes, no deletion, the qonto-sync Edge Function is NOT touched (see 3).
+-- No policy changes, no deletion. The matching itself is in the database (see 3); the qonto-sync Edge Function changes by one line only (it reads back the
+-- unmatched count the database stores, so its answer matches the run row).
 --
 --  1. private.vat_key(text): THE normalisation. Remove spaces, dots and dashes; upper case; remove a leading IT only when exactly 11 digits follow (nothing
 --     else after them). Other country prefixes stay (FR12345678901 is compared with its prefix). Empty -> null.
@@ -14,8 +15,8 @@
 --     Neither of those triggers writes back to companies or to company_id, and the companies trigger below fires only on vat_number, so there is no cycle.
 --     Invoiced or received commission lines are never touched here (the rebuild leaves them alone, as before); the function does not touch commissions at all.
 --  3. Where it runs: a BEFORE UPDATE trigger on qonto_sync_runs, when a run is marked finished without error. The Edge Function's own final update of the run
---     row (which it already does) therefore links what it could not, and the same statement gets unmatched_count recomputed after the linking, so the run says 0
---     when nothing is left. The trigger fires once per run (finished_at null -> not null) and writes only to documents and companies, so it never re-enters.
+--     row (which it already does) therefore links what it could not, and the same statement gets unmatched_count recomputed after the linking, so the run row says 0
+--     when nothing is left (the Edge Function reads that stored count back, RETURNING, for its own answer). The trigger fires once per run (finished_at null -> not null) and writes only to documents and companies, so it never re-enters.
 --     A failure inside is logged in commission_rebuild_errors (message "vat-match: ...") and never breaks the run.
 --  4. View invoices_to_link_v ("Fatture da collegare", staff only, security_invoker) and function link_invoice_to_company(invoice, company), the same pattern as
 --     link_invoice_to_pratica: staff only (checked inside), security definer, fixed search_path, signed-in users only, Italian messages. It links the invoice and
@@ -87,7 +88,10 @@ begin
     select count(*) into n from public.companies co where private.vat_key(co.vat_number) = g.vkey;
     if n = 0 then v_no_company := v_no_company + cardinality(g.ids); continue; end if;
     if n > 1 then v_ambiguous := v_ambiguous + cardinality(g.ids); continue; end if;
-    select co.id, co.qonto_client_id into c from public.companies co where private.vat_key(co.vat_number) = g.vkey;
+    -- lock the company first (same order as link_invoice_to_company: company, then invoices) and read its Qonto id after the lock, so two sessions
+    -- can never both see it empty and both link; if the row stopped matching while we waited, skip it (the next run looks again)
+    select co.id, co.qonto_client_id into c from public.companies co where private.vat_key(co.vat_number) = g.vkey for update;
+    if not found then continue; end if;
     if g.qid is not null and c.qonto_client_id is not null and c.qonto_client_id <> g.qid then
       v_other := v_other + cardinality(g.ids); continue;
     end if;
@@ -95,7 +99,12 @@ begin
     if g.qid is not null and c.qonto_client_id is null then
       begin
         update public.companies set qonto_client_id = g.qid where id = c.id and qonto_client_id is null;
-        v_companies := v_companies + 1;
+        get diagnostics n = row_count;
+        if n = 0 then
+          go := false; v_other := v_other + cardinality(g.ids);   -- not expected under the lock; never link without the id written
+        else
+          v_companies := v_companies + 1;
+        end if;
       exception when unique_violation then
         -- another company already holds this Qonto client id: never take it over
         go := false; v_other := v_other + cardinality(g.ids);
@@ -146,17 +155,20 @@ select k.id, k.qonto_id, k.kind, k.number, k.status, k.issue_date, k.net_cents, 
        case when k.vat_key is null then 'no_vat'
             when m.n = 0 then 'no_company'
             when m.n > 1 then 'ambiguous'
-            when k.qonto_client_id is not null and m.first_qid is not null and m.first_qid <> k.qonto_client_id then 'other_qonto_client'
+            when (k.qonto_client_id is not null and m.first_qid is not null and m.first_qid <> k.qonto_client_id) or m.held_elsewhere then 'other_qonto_client'
             else 'to_be_linked' end as reason_code,
        case when k.vat_key is null then 'Il cliente Qonto non ha partita IVA né codice fiscale: scegli l''azienda a mano'
             when m.n = 0 then 'Nessuna azienda ha questa partita IVA: scegli l''azienda a mano o correggi la partita IVA dell''azienda'
             when m.n > 1 then 'Più aziende hanno questa partita IVA: scegli a mano'
-            when k.qonto_client_id is not null and m.first_qid is not null and m.first_qid <> k.qonto_client_id then 'L''azienda con questa partita IVA è già collegata a un altro cliente Qonto: controlla o scegli a mano'
+            when (k.qonto_client_id is not null and m.first_qid is not null and m.first_qid <> k.qonto_client_id) or m.held_elsewhere then 'L''azienda con questa partita IVA è già collegata a un altro cliente Qonto, oppure questo cliente Qonto è già di un''altra azienda: controlla o scegli a mano'
             else 'Verrà collegata da sola al prossimo aggiornamento da Qonto' end as reason,
        cand.candidates
   from keyed k
   left join lateral (
-    select count(*) as n, (array_agg(c.qonto_client_id))[1] as first_qid
+    select count(*) as n, (array_agg(c.qonto_client_id))[1] as first_qid, (array_agg(c.id))[1] as first_id,
+           -- the invoice's Qonto client is already held by a company other than the one the VAT points to (the matching and the staff action refuse it)
+           (k.qonto_client_id is not null and exists (select 1 from public.companies h where h.qonto_client_id = k.qonto_client_id
+                                                         and h.id is distinct from (array_agg(c.id))[1])) as held_elsewhere
       from public.companies c where k.vat_key is not null and private.vat_key(c.vat_number) = k.vat_key
   ) m on true
   left join lateral (
@@ -184,9 +196,16 @@ declare
   v_qid text;
   v_has uuid;
   c_qid text;
+  n int;
 begin
   if not (select private.is_staff()) then
     raise exception 'Solo il team Gemina può collegare le fatture alle aziende.' using errcode = '42501';
+  end if;
+  -- lock the company first, then the invoice (the order the matching uses), and read the company's Qonto id after the lock: two staff requests for
+  -- different Qonto clients and the same empty company are serialised, so the second sees the id the first wrote and is refused below
+  select c.qonto_client_id into c_qid from public.companies c where c.id = p_company for update;
+  if not found then
+    raise exception 'Azienda non trovata.' using errcode = '22023';
   end if;
   select d.qonto_client_id, d.company_id into v_qid, v_has from public.qonto_documents d where d.id = p_invoice and d.removed_at is null for update;
   if not found then
@@ -195,19 +214,19 @@ begin
   if v_has is not null then
     raise exception 'La fattura ha già un''azienda.' using errcode = '22023';
   end if;
-  select c.qonto_client_id into c_qid from public.companies c where c.id = p_company;
-  if not found then
-    raise exception 'Azienda non trovata.' using errcode = '22023';
-  end if;
   if v_qid is not null and c_qid is not null and c_qid <> v_qid then
     raise exception 'L''azienda è già collegata a un altro cliente Qonto: non lo sostituisco.' using errcode = '22023';
   end if;
   if v_qid is not null and c_qid is null then
     begin
       update public.companies set qonto_client_id = v_qid where id = p_company and qonto_client_id is null;
+      get diagnostics n = row_count;
     exception when unique_violation then
       raise exception 'Questo cliente Qonto è già collegato a un''altra azienda.' using errcode = '22023';
     end;
+    if n = 0 then   -- not expected under the lock; never link without the id written
+      raise exception 'L''azienda è già collegata a un altro cliente Qonto: non lo sostituisco.' using errcode = '22023';
+    end if;
   end if;
   -- this invoice and the other still unlinked ones of the same Qonto client; the pratica and the commission lines follow from the existing triggers
   return query
