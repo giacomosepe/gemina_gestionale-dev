@@ -162,7 +162,7 @@ It is the structure of production on 2026-10-19, read from its catalog (producti
   source. They have no test file yet. What they hold: `public.scadenze` (scadenze of a pratica, staff only), the companies sync, supplier invoices
   (tables, private bucket `supplier-invoices`, Drive copies, categories, screen functions, credit notes) and the invoice upload portal
   (`upload_portals`, `upload_portal_files`, private bucket `portal-uploads`).
-- Allegati per la firma (migration `20261109171500_signature_attachments.sql`, test 029; piano pagine passo 8): `scadenze.drive_folder` (the Drive folder the
+- Allegati per la firma (migration `20261109170157_signature_attachments.sql`, test 029; piano pagine passo 8): `scadenze.drive_folder` (the Drive folder the
   operator links to a scadenza; no default). `public.signature_attachments` = one document to sign per scadenza and catalogue voce (`zite_dato_id`): name,
   `signatures_required` (1-5) and `signers` (`cliente`, `gemina`) copied from the Zite voce at creation and frozen once sent, signed or marked; `method`
   `p7m` (today) or `pandadoc` (room for later, unused); `sent_*` (step 9, the sender is always the caller), `marked_signed_*` («Segna come firmati»),
