@@ -162,6 +162,16 @@ It is the structure of production on 2026-10-19, read from its catalog (producti
   source. They have no test file yet. What they hold: `public.scadenze` (scadenze of a pratica, staff only), the companies sync, supplier invoices
   (tables, private bucket `supplier-invoices`, Drive copies, categories, screen functions, credit notes) and the invoice upload portal
   (`upload_portals`, `upload_portal_files`, private bucket `portal-uploads`).
+- Allegati per la firma (migration `20261109171500_signature_attachments.sql`, test 029; piano pagine passo 8): `scadenze.drive_folder` (the Drive folder the
+  operator links to a scadenza; no default). `public.signature_attachments` = one document to sign per scadenza and catalogue voce (`zite_dato_id`): name,
+  `signatures_required` (1-5) and `signers` (`cliente`, `gemina`) copied from the Zite voce at creation and frozen once sent, signed or marked; `method`
+  `p7m` (today) or `pandadoc` (room for later, unused); `sent_*` (step 9, the sender is always the caller), `marked_signed_*` («Segna come firmati»),
+  `archived` (never deleted). `public.signature_attachment_files` = every version read from the folder (original, or signed with N `.p7m`), unique by
+  bytes (`sha256`), never changed except adding its bucket copy once (`storage_path` = `<organization>/<attachment>/<sha256>.<ext>` in the private bucket
+  `signature-files`, 50 MB, staff read, written only by the server). `public.signature_events` = the history (created, file, signed_file, sent,
+  marked_signed, unmarked, archived, restored) written only by the database (`private.signature_log`); `source` `resend` / `pandadoc` and the unique
+  `external_event_id` are for future webhooks (delivered, bounced, opened, signed). `public.signature_attachments_v` (security_invoker): current file,
+  `signatures_done`, `status` da_preparare / pronto / inviato / firmato_in_parte / firmato / archiviato, last event. Staff only; no delete.
 - Security advisor, expected: INFO `rls_enabled_no_policy` on `private.settings` (on purpose: no policy = nobody but the server can read it); warnings: leaked-password protection; `authenticated_security_definer_function_executable` for
   `mark_conversation_read`, `partner_threads`, `staff_colleagues`, `confirm_document_upload`, `remove_document`,
   `notify_document`, `mark_documents_read`, `partner_documents`, `partner_payments`, `partner_commissions`, `partner_pratica_invoiced`, `rebuild_all_commissions`, `mark_commissions_invoiced`, `mark_commissions_paid`, `invoice_pratica_options`, `link_invoice_to_pratica`, `unlink_invoice_pratica`, `link_invoice_to_company`, `correct_commission_invoice`, `unmark_commissions_paid`, `unmark_commissions_invoiced` (meant to be called by signed-in users; each checks the
