@@ -1,4 +1,4 @@
-// allegati-firma (v1, 2026-11-09, piano pagine passo 8; migration signature_attachments)
+// allegati-firma (v2, 2026-11-10, piano pagine passi 8 e 9; migration signature_attachments)
 // The «Allegati per la firma» of a pratica's scadenza. Called by the Gestionale's server (Zite endpoint allegatiFirma), never by a browser.
 // Same trust model and secret as fatture-import: header "x-bridge-secret" = BRIDGE_SECRET_STAFF. Kept apart from portal-bridge.
 // Every action acts AS the colleague logged in to Zite (zite_user_id from context.user, never from the browser): role authenticated with that staff
@@ -15,6 +15,8 @@
 //           bytes'), then the version row is written as the colleague. Without base64 (file too large to pass) the version is written with no copy.
 //           -> { result: 'nuova' | 'gia_presente', copy: boolean }
 //   segna   { zite_user_id, attachment_ids, firmato }                     «Segna come firmati» (true) or back (false) -> { n }
+//   inviato { zite_user_id, attachment_ids, sent_to, message_id? }        v2 (passo 9): the Gestionale has just sent them by email (Resend id); the database
+//           records when, to whom and who (the colleague), and the history gets «sent» -> { n }
 
 import postgres from "npm:postgres@3.4.5";
 import { createClient } from "npm:@supabase/supabase-js@2.50.0";
@@ -199,7 +201,18 @@ async function segna(p: Record<string, unknown>) {
   });
 }
 
-const AZIONI: Record<string, (p: Record<string, unknown>) => Promise<unknown>> = { elenco, prepara, cartella, file, segna };
+async function inviato(p: Record<string, unknown>) {
+  const ids = uuids(p.attachment_ids, "attachment_ids", 50);
+  const to = text(p.sent_to, "sent_to", 500);
+  const msg = p.message_id == null ? null : text(p.message_id, "message_id", 200);
+  return await comeCollega(p, async (tx) => {
+    const r = await tx`update public.signature_attachments set sent_at = now(), sent_to = ${to}, sent_message_id = ${msg}
+                        where id = any(${ids}::uuid[]) and not archived returning id`;
+    return { n: r.length };
+  });
+}
+
+const AZIONI: Record<string, (p: Record<string, unknown>) => Promise<unknown>> = { elenco, prepara, cartella, file, segna, inviato };
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") return reply(405, { ok: false, error: "method_not_allowed" });
