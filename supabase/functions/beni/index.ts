@@ -1,4 +1,4 @@
-// beni (v1, 2026-11-10; migration beni_master)
+// beni (v2, 2026-11-10; migration beni_master) — v2: each good also carries zite_bene_id (the code the invoice import knows it by; null = placeholder)
 // The goods of the investment of a trattativa or a pratica: the main list lives here (EU project), no longer in a JSON text on Zite.
 // Called by the Gestionale's server (Zite endpoint gestisciBeni), never by a browser. Same trust model and secret as allegati-firma:
 // header "x-bridge-secret" = BRIDGE_SECRET_STAFF. Every action acts AS the colleague logged in to Zite (zite_user_id from context.user, never from
@@ -8,7 +8,7 @@
 //   elenco { zite_user_id, pratica_id?, trattativa_id?, trattative?: [zite ids] }
 //          On a pratica: the goods born on its trattative pass to it first (when the pratica is on Supabase), then its goods. A placeholder made by the
 //          invoice import (no zite_bene_id) is listed only when invoices are assigned to it. On a trattativa: the goods born on it.
-//          -> { beni: [{ id, name, supplier, order_date, ordered, position, pratica_id, trattativa_id, allocations, values: {dato_id: value} }], pratica_su_supabase }
+//          -> { beni: [{ id, name, supplier, order_date, ordered, position, pratica_id, trattativa_id, allocations, zite_bene_id, values: {dato_id: value} }], pratica_su_supabase }
 //   salva  { zite_user_id, bene: { id?, pratica_id?, trattativa_id?, name?, supplier?, order_date?, ordered? } }
 //          new (no id): on the pratica or the trattativa; it is «managed» (zite_bene_id = its id), so the import keeps it and puts the placeholder aside.
 //          existing: the fields sent change; a placeholder that is edited becomes managed.  -> { bene }
@@ -81,7 +81,7 @@ async function conValori(tx: postgres.TransactionSql, righe: Riga[]) {
     : [];
   return righe.map((r) => ({
     id: r.id, name: r.name, supplier: r.supplier_hint, order_date: r.order_date, ordered: r.ordered, position: r.position,
-    pratica_id: r.pratica_id, trattativa_id: r.trattativa_zite_id, allocations: Number(r.allocations ?? 0),
+    pratica_id: r.pratica_id, trattativa_id: r.trattativa_zite_id, allocations: Number(r.allocations ?? 0), zite_bene_id: r.zite_bene_id ?? null,
     values: Object.fromEntries(valori.filter((v) => v.bene_id === r.id).map((v) => [v.dato_id, v.value])),
   }));
 }
