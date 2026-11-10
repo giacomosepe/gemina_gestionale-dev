@@ -10,7 +10,7 @@
 // A) PUBBLICHE, dal browser del cliente. Si autenticano con il codice del link (campo "token"; nel database c'è solo il suo sha256).
 //    info     { token }                              -> { cliente, pratiche: [{id, code, title}] }  (solo pratiche aperte del cliente)
 //    prepara  { token, pratica_id, files: [{name, size}] } -> { files: [{id, name, upload_url}] }   (URL firmati di caricamento, max 100 file)
-//    conferma { token, file_ids }                    -> { confermati, mancanti }   (controlla che il file sia davvero nel bucket)
+//    conferma { token, file_ids }                    -> { confermati, mancanti, rifiutati }   (il file è nel bucket e i primi byte corrispondono all'estensione)
 //
 // B) DEL GESTIONALE, da server a server. Header "x-bridge-secret" = BRIDGE_SECRET_STAFF (lo stesso di fatture-import).
 //    da_trasferire { pratica_id?, limit? }           -> { totale, files: [{id, pratica_id, file_name, size_bytes, download_url}] }
