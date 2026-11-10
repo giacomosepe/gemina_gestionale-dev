@@ -177,6 +177,10 @@ It is the structure of production on 2026-10-19, read from its catalog (producti
   (one row per voce to sign of the scadenza), `cartella` (the scadenza's Drive folder), `file` (copy to `signature-files`, sha256 checked, then the version
   row; no copy when the file is too large to pass), `segna` («Segna come firmati» and back); v2 (passo 9) `inviato` (after the Gestionale sent the documents by email: `sent_at`, `sent_to`,
   the Resend id in `sent_message_id`; the sender is the caller; the history gets «sent»; sending again moves `sent_at` and adds another «sent»).
+- Edge Function `resend-webhook` (v1, 2026-11-10, verify_jwt off): Resend's webhook. Checks the Svix signature with the secret
+  `RESEND_WEBHOOK_SECRET` (set by Giacomo in the dashboard, never in the repo or a chat; calls older than 5 minutes refused), then records
+  `email.delivered` → `delivered`, `email.bounced` / `email.complained` → `bounced`, `email.opened` → `opened` in `signature_events` (source `resend`,
+  once per event and document) for the documents whose `sent_message_id` is that email. Any other email is ignored with 200.
 - Security advisor, expected: INFO `rls_enabled_no_policy` on `private.settings` (on purpose: no policy = nobody but the server can read it); warnings: leaked-password protection; `authenticated_security_definer_function_executable` for
   `mark_conversation_read`, `partner_threads`, `staff_colleagues`, `confirm_document_upload`, `remove_document`,
   `notify_document`, `mark_documents_read`, `partner_documents`, `partner_payments`, `partner_commissions`, `partner_pratica_invoiced`, `rebuild_all_commissions`, `mark_commissions_invoiced`, `mark_commissions_paid`, `invoice_pratica_options`, `link_invoice_to_pratica`, `unlink_invoice_pratica`, `link_invoice_to_company`, `correct_commission_invoice`, `unmark_commissions_paid`, `unmark_commissions_invoiced` (meant to be called by signed-in users; each checks the
