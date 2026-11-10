@@ -1,4 +1,7 @@
-// portale-fatture (v1, 2026-11-06)
+// portale-fatture (v2, 2026-11-10)
+// v2 (revisione di sicurezza provvisoria, migrazione portal_uploads_hardening): 100 MB per file; alla conferma si leggono i primi byte e un file il cui
+// contenuto non corrisponde all'estensione diventa 'rejected' e si toglie dal bucket; 20 codici sbagliati in 15 minuti dallo stesso indirizzo = 429
+// (si salva solo l'impronta HMAC dell'IP); CORS solo verso gli indirizzi nel segreto PORTALE_FATTURE_ORIGINS (separati da virgola; vuoto = nessuna pagina).
 // Portale di caricamento fatture: il cliente carica da una pagina pubblica, i file vanno nel bucket privato "portal-uploads",
 // il Gestionale li scarica e li mette su Drive.
 //
@@ -29,7 +32,10 @@ const SECRET_KEY = (() => {
 const BUCKET = "portal-uploads";
 const MAX_FILES_PER_CALL = 100;
 const MAX_FILES_PER_DAY = 3000;
-const MAX_FILE_BYTES = 500 * 1024 * 1024; // lo stesso limite del bucket
+const MAX_FILE_BYTES = 100 * 1024 * 1024; // lo stesso limite del bucket
+const MAX_FALLITI = 20;          // codici sbagliati per indirizzo...
+const FINESTRA_MIN = 15;         // ...in questi minuti
+const ORIGINS = new Set((Deno.env.get("PORTALE_FATTURE_ORIGINS") ?? "").split(",").map((x) => x.trim().replace(/\/+$/, "")).filter(Boolean));
 const MAX_BODY = 200_000;
 const EXTENSIONS = ["xml", "p7m", "pdf", "zip", "xls", "xlsx", "csv"];
 
@@ -40,15 +46,30 @@ class PortalError extends Error {
   constructor(public status: number, public code: string) { super(code); }
 }
 
-const CORS: Record<string, string> = {
-  "access-control-allow-origin": "*",
-  "access-control-allow-methods": "POST, OPTIONS",
-  "access-control-allow-headers": "content-type",
-  "access-control-max-age": "86400",
-};
+/** CORS solo per le pagine autorizzate: un'altra pagina non può chiamare il portale dal browser del cliente. */
+function cors(origin: string | null): Record<string, string> {
+  if (!origin || !ORIGINS.has(origin)) return { vary: "origin" };
+  return {
+    "access-control-allow-origin": origin,
+    "access-control-allow-methods": "POST, OPTIONS",
+    "access-control-allow-headers": "content-type",
+    "access-control-max-age": "86400",
+    vary: "origin",
+  };
+}
 
-function reply(status: number, body: unknown) {
-  return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store", ...CORS } });
+function replyTo(status: number, body: unknown, origin: string | null = null) {
+  return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store", ...cors(origin) } });
+}
+
+type Ctx = { ipHash: string };
+
+/** Impronta dell'indirizzo del chiamante (HMAC con il segreto di staff): serve solo a contare i tentativi, l'IP in chiaro non si salva. */
+async function impronta(req: Request): Promise<string> {
+  const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || req.headers.get("cf-connecting-ip") || "sconosciuto";
+  const chiave = await crypto.subtle.importKey("raw", new TextEncoder().encode(SECRET_STAFF || "portale-fatture"), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const mac = new Uint8Array(await crypto.subtle.sign("HMAC", chiave, new TextEncoder().encode(ip)));
+  return [...mac].map((x) => x.toString(16).padStart(2, "0")).join("");
 }
 
 function safeEqual(a: string, b: string) {
@@ -78,14 +99,20 @@ async function sha256Hex(text: string): Promise<string> {
 }
 
 /** Il link del cliente: valido se esiste, non è revocato né scaduto. Ogni errore è lo stesso, per non dire nulla a chi prova a indovinare. */
-async function linkValido(token: unknown) {
-  if (typeof token !== "string" || !TOKEN.test(token)) throw new PortalError(401, "link_non_valido");
-  const hash = await sha256Hex(token);
-  const [p] = await sql`
+async function linkValido(token: unknown, ctx: Ctx) {
+  const [{ n }] = await sql`select count(*)::int as n from private.portal_link_failures
+                             where ip_hash = ${ctx.ipHash} and at > now() - make_interval(mins => ${FINESTRA_MIN})`;
+  if (n >= MAX_FALLITI) throw new PortalError(429, "troppi_tentativi");
+  const hash = typeof token === "string" && TOKEN.test(token) ? await sha256Hex(token) : null;
+  const [p] = hash ? await sql`
     select pt.id, pt.organization_id, pt.company_id, c.name as company_name
       from public.upload_portals pt join public.companies c on c.id = pt.company_id
-     where pt.token_hash = ${hash} and pt.revoked_at is null and pt.expires_at > now()`;
-  if (!p) throw new PortalError(401, "link_non_valido");
+     where pt.token_hash = ${hash} and pt.revoked_at is null and pt.expires_at > now()` : [];
+  if (!p) {
+    await sql`insert into private.portal_link_failures (ip_hash) values (${ctx.ipHash})`;
+    await sql`delete from private.portal_link_failures where at < now() - interval '1 day'`;
+    throw new PortalError(401, "link_non_valido");
+  }
   await sql`update public.upload_portals set last_used_at = now() where id = ${p.id}`;
   return p as { id: string; organization_id: string; company_id: string; company_name: string };
 }
@@ -96,14 +123,39 @@ function nomeSicuro(name: string): string {
   return s || "file";
 }
 
-function estensioneOk(name: string): boolean {
+function estensione(name: string): string | null {
   const m = /\.([A-Za-z0-9]{1,5})$/.exec(name.trim());
-  return !!m && EXTENSIONS.includes(m[1].toLowerCase());
+  return m && EXTENSIONS.includes(m[1].toLowerCase()) ? m[1].toLowerCase() : null;
+}
+const estensioneOk = (name: string) => estensione(name) !== null;
+
+/** Il contenuto corrisponde all'estensione? Si guardano i primi byte (il tipo dichiarato dal browser non conta). */
+export function contenutoOk(ext: string, b: Uint8Array): boolean {
+  const inizia = (...firma: number[]) => firma.every((x, i) => b[i] === x);
+  const testo = new TextDecoder("utf-8", { fatal: false }).decode(b).replace(/^\uFEFF/, "");
+  const senzaNul = !b.includes(0);
+  switch (ext) {
+    case "pdf": return testo.slice(0, 1024).includes("%PDF-");
+    case "zip": case "xlsx": return inizia(0x50, 0x4b, 0x03, 0x04) || inizia(0x50, 0x4b, 0x05, 0x06);
+    case "xls": return inizia(0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1);
+    case "xml": return senzaNul && /^\s*</.test(testo);
+    case "p7m": return (b[0] === 0x30 && [0x80, 0x81, 0x82, 0x83, 0x84].includes(b[1])) || /^\s*(MI|-----BEGIN)/.test(testo);
+    case "csv": return senzaNul && b.length > 0;
+    default: return false;
+  }
+}
+
+async function primiByte(path: string): Promise<Uint8Array | null> {
+  const { data, error } = await admin.storage.from(BUCKET).createSignedUrl(path, 60);
+  if (error || !data?.signedUrl) return null;
+  const r = await fetch(data.signedUrl, { headers: { range: "bytes=0-1023" } });
+  if (!r.ok && r.status !== 206) { await r.body?.cancel(); return null; }
+  return new Uint8Array(await r.arrayBuffer()).slice(0, 1024);
 }
 
 // ---------- A) pubbliche
-async function info(p: Record<string, unknown>) {
-  const portale = await linkValido(p.token);
+async function info(p: Record<string, unknown>, ctx: Ctx) {
+  const portale = await linkValido(p.token, ctx);
   const pratiche = await sql`
     select id, code, title from public.pratiche
      where company_id = ${portale.company_id} and removed_at is null and is_open
@@ -111,8 +163,8 @@ async function info(p: Record<string, unknown>) {
   return { cliente: portale.company_name, estensioni: EXTENSIONS, max_bytes: MAX_FILE_BYTES, pratiche };
 }
 
-async function prepara(p: Record<string, unknown>) {
-  const portale = await linkValido(p.token);
+async function prepara(p: Record<string, unknown>, ctx: Ctx) {
+  const portale = await linkValido(p.token, ctx);
   const pratica = oneUuid(p.pratica_id, "pratica_id");
   if (!Array.isArray(p.files) || p.files.length === 0 || p.files.length > MAX_FILES_PER_CALL) throw new PortalError(400, "invalid_files");
   const [prat] = await sql`select id from public.pratiche where id = ${pratica} and company_id = ${portale.company_id} and removed_at is null and is_open`;
@@ -143,12 +195,13 @@ async function prepara(p: Record<string, unknown>) {
   return { files: out };
 }
 
-async function conferma(p: Record<string, unknown>) {
-  const portale = await linkValido(p.token);
+async function conferma(p: Record<string, unknown>, ctx: Ctx) {
+  const portale = await linkValido(p.token, ctx);
   const ids = uuids(p.file_ids, "file_ids", MAX_FILES_PER_CALL);
-  const righe = await sql`select id, storage_path from public.upload_portal_files where portal_id = ${portale.id} and id = any(${ids}::uuid[]) and status = 'pending'`;
+  const righe = await sql`select id, storage_path, file_name from public.upload_portal_files where portal_id = ${portale.id} and id = any(${ids}::uuid[]) and status = 'pending'`;
   const confermati: string[] = [];
   const mancanti: string[] = [];
+  const rifiutati: string[] = [];
   for (const r of righe) {
     const dir = r.storage_path.slice(0, r.storage_path.lastIndexOf("/"));
     const nome = r.storage_path.slice(r.storage_path.lastIndexOf("/") + 1);
@@ -156,10 +209,20 @@ async function conferma(p: Record<string, unknown>) {
     const obj = data?.find((o) => o.name === nome);
     if (!obj) { mancanti.push(r.id); continue; }
     const size = Number((obj.metadata as Record<string, unknown> | null)?.size ?? 0);
+    const ext = estensione(r.file_name);
+    const testa = ext ? await primiByte(r.storage_path) : null;
+    if (!ext || !testa || size > MAX_FILE_BYTES || !contenutoOk(ext, testa)) {
+      // contenuto diverso da quello che il nome dice (o illeggibile): non si tiene e non arriva mai su Drive
+      const { error } = await admin.storage.from(BUCKET).remove([r.storage_path]);
+      if (error) console.error("portale-fatture remove", error.message);
+      await sql`update public.upload_portal_files set status = 'rejected', size_bytes = ${size}, error = 'contenuto_non_valido' where id = ${r.id} and status = 'pending'`;
+      rifiutati.push(r.id);
+      continue;
+    }
     await sql`update public.upload_portal_files set status = 'uploaded', uploaded_at = now(), size_bytes = ${size} where id = ${r.id} and status = 'pending'`;
     confermati.push(r.id);
   }
-  return { confermati, mancanti };
+  return { confermati, mancanti, rifiutati };
 }
 
 // ---------- B) del Gestionale
@@ -227,13 +290,15 @@ async function revocaLink(p: Record<string, unknown>) {
   });
 }
 
-const PUBBLICHE: Record<string, (p: Record<string, unknown>) => Promise<unknown>> = { info, prepara, conferma };
+const PUBBLICHE: Record<string, (p: Record<string, unknown>, ctx: Ctx) => Promise<unknown>> = { info, prepara, conferma };
 const GESTIONALE: Record<string, (p: Record<string, unknown>) => Promise<unknown>> = {
   da_trasferire: daTrasferire, trasferito, fallito, crea_link: creaLink, revoca_link: revocaLink,
 };
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
+  const origin = req.headers.get("origin");
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors(origin) });
+  const reply = (status: number, body: unknown) => replyTo(status, body, origin);
   if (req.method !== "POST") return reply(405, { ok: false, error: "method_not_allowed" });
 
   let payload: Record<string, unknown>;
@@ -248,7 +313,7 @@ Deno.serve(async (req) => {
 
   try {
     const action = typeof payload.action === "string" ? payload.action : "";
-    if (Object.hasOwn(PUBBLICHE, action)) return reply(200, { ok: true, data: await PUBBLICHE[action](payload) });
+    if (Object.hasOwn(PUBBLICHE, action)) return reply(200, { ok: true, data: await PUBBLICHE[action](payload, { ipHash: await impronta(req) }) });
     if (Object.hasOwn(GESTIONALE, action)) {
       if (!SECRET_STAFF) return reply(500, { ok: false, error: "not_configured" });
       if (!safeEqual(req.headers.get("x-bridge-secret") ?? "", SECRET_STAFF)) return reply(401, { ok: false, error: "unauthorized" });
