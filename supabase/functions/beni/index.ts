@@ -1,4 +1,7 @@
-// beni (v2, 2026-11-10; migration beni_master) — v2: each good also carries zite_bene_id (the code the invoice import knows it by; null = placeholder)
+// beni (v3, 2026-11-11; migrations beni_master, bene_documents)
+// v2: each good also carries zite_bene_id (the code the invoice import knows it by; null = placeholder).
+// v3: each good also carries its documents (bene_documents: references to Drive files), its invoiced total and suppliers (from the supplier-invoice
+//     lines assigned to it, view supplier_invoice_by_bene) and its Drive folder; new actions dettaglio, documento, togli_documento, cartella.
 // The goods of the investment of a trattativa or a pratica: the main list lives here (EU project), no longer in a JSON text on Zite.
 // Called by the Gestionale's server (Zite endpoint gestisciBeni), never by a browser. Same trust model and secret as allegati-firma:
 // header "x-bridge-secret" = BRIDGE_SECRET_STAFF. Every action acts AS the colleague logged in to Zite (zite_user_id from context.user, never from
@@ -14,6 +17,11 @@
 //          existing: the fields sent change; a placeholder that is edited becomes managed.  -> { bene }
 //   togli  { zite_user_id, id }    put aside (removed_at); refused while invoices are assigned to it  -> { ok }
 //   valore { zite_user_id, bene_id, dato_id, value | null }   one catalogue value of a good (null clears it)  -> { ok }
+//   dettaglio { zite_user_id, id }   one good with everything above plus its invoice lines  -> { bene, righe: [{ invoice_id, supplier_name, number, issue_date,
+//          doc_type, description, period_from, period_to, share_pct, amount }] }
+//   documento { zite_user_id, bene_id, dato_id, name, drive_file_id? | link?, valid_until? }   a document of the good (the file is on Drive)  -> { ok, id }
+//   togli_documento { zite_user_id, id }   put aside  -> { ok }
+//   cartella { zite_user_id, bene_id, drive_folder }   the Drive folder of the good («Beni/<name>»)  -> { ok }
 
 import postgres from "npm:postgres@3.4.5";
 
@@ -23,6 +31,7 @@ const MAX_BODY = 200_000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ZITE_ID = /^[A-Za-z0-9_-]{1,100}$/;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const DRIVE_ID = /^[A-Za-z0-9_-]{10,200}$/;
 
 const sql = postgres(DB_URL, { prepare: false, max: 2, idle_timeout: 20 });
 
@@ -76,18 +85,28 @@ type Riga = Record<string, unknown> & { id: string };
 
 async function conValori(tx: postgres.TransactionSql, righe: Riga[]) {
   const ids = righe.map((r) => r.id);
-  const valori = ids.length
-    ? await tx`select bene_id, dato_id, value from public.bene_values where bene_id = any(${ids}::uuid[])`
-    : [];
+  const [valori, documenti, fatture] = ids.length
+    ? await Promise.all([
+      tx`select bene_id, dato_id, value from public.bene_values where bene_id = any(${ids}::uuid[])`,
+      tx`select id, bene_id, dato_id, name, drive_file_id, link, to_char(valid_until, 'YYYY-MM-DD') as valid_until
+           from public.bene_documents where bene_id = any(${ids}::uuid[]) and removed_at is null order by created_at`,
+      tx`select bene_id, coalesce(sum(amount), 0)::text as invoiced, array_remove(array_agg(distinct supplier_name), null) as suppliers
+           from public.supplier_invoice_by_bene where bene_id = any(${ids}::uuid[]) group by bene_id`,
+    ])
+    : [[], [], []];
   return righe.map((r) => ({
     id: r.id, name: r.name, supplier: r.supplier_hint, order_date: r.order_date, ordered: r.ordered, position: r.position,
     pratica_id: r.pratica_id, trattativa_id: r.trattativa_zite_id, allocations: Number(r.allocations ?? 0), zite_bene_id: r.zite_bene_id ?? null,
+    drive_folder: r.drive_folder ?? null,
     values: Object.fromEntries(valori.filter((v) => v.bene_id === r.id).map((v) => [v.dato_id, v.value])),
+    documents: documenti.filter((d) => d.bene_id === r.id).map(({ bene_id: _b, ...d }) => d),
+    invoiced: fatture.find((f) => f.bene_id === r.id)?.invoiced ?? "0",
+    suppliers: fatture.find((f) => f.bene_id === r.id)?.suppliers ?? [],
   }));
 }
 
 const COLONNE = (tx: postgres.TransactionSql) => tx`b.id, b.name, b.supplier_hint, to_char(b.order_date, 'YYYY-MM-DD') as order_date, b.ordered, b.position,
-  b.pratica_id, b.trattativa_zite_id, (select count(*) from public.supplier_invoice_allocations a where a.bene_id = b.id) as allocations, b.zite_bene_id`;
+  b.pratica_id, b.trattativa_zite_id, (select count(*) from public.supplier_invoice_allocations a where a.bene_id = b.id) as allocations, b.zite_bene_id, b.drive_folder`;
 
 async function elenco(p: Record<string, unknown>) {
   const pratica = optUuid(p.pratica_id, "pratica_id");
@@ -185,7 +204,61 @@ async function valore(p: Record<string, unknown>) {
   });
 }
 
-const AZIONI: Record<string, (p: Record<string, unknown>) => Promise<unknown>> = { elenco, salva, togli, valore };
+async function dettaglio(p: Record<string, unknown>) {
+  const id = oneUuid(p.id, "id");
+  return await comeCollega(p, async (tx) => {
+    const [r] = await tx`select ${COLONNE(tx)} from public.beni b where b.id = ${id} and b.removed_at is null`;
+    if (!r) throw new BeniError(404, "bene_not_found");
+    const righe = await tx`select invoice_id, supplier_name, number, to_char(issue_date, 'YYYY-MM-DD') as issue_date, doc_type, description,
+                                  to_char(period_from, 'YYYY-MM-DD') as period_from, to_char(period_to, 'YYYY-MM-DD') as period_to, share_pct::text, amount::text
+                             from public.supplier_invoice_by_bene where bene_id = ${id} order by issue_date, number, position`;
+    return { bene: (await conValori(tx, [r as unknown as Riga]))[0], righe };
+  });
+}
+
+async function documento(p: Record<string, unknown>) {
+  const bene = oneUuid(p.bene_id, "bene_id");
+  const dato = ziteId(p.dato_id, "dato_id");
+  const name = optText(p.name, "name", 255);
+  if (!name) throw new BeniError(400, "invalid_name");
+  const driveFile = p.drive_file_id == null ? null : (typeof p.drive_file_id === "string" && DRIVE_ID.test(p.drive_file_id) ? p.drive_file_id : null);
+  if (p.drive_file_id != null && !driveFile) throw new BeniError(400, "invalid_drive_file_id");
+  const link = optText(p.link, "link", 1000) ?? null;
+  if (link && !/^https:\/\//.test(link)) throw new BeniError(400, "invalid_link");
+  if (!driveFile && !link) throw new BeniError(400, "file_or_link");
+  const validUntil = optText(p.valid_until, "valid_until", 10) ?? null;
+  if (validUntil && !DAY.test(validUntil)) throw new BeniError(400, "invalid_valid_until");
+  return await comeCollega(p, async (tx) => {
+    const [b] = await tx`select id from public.beni where id = ${bene} and removed_at is null`;
+    if (!b) throw new BeniError(404, "bene_not_found");
+    const [d] = await tx`insert into public.bene_documents (bene_id, dato_id, name, drive_file_id, link, valid_until)
+                          values (${bene}, ${dato}, ${name}, ${driveFile}, ${link}, ${validUntil}) returning id`;
+    return { ok: true, id: d.id };
+  });
+}
+
+async function togliDocumento(p: Record<string, unknown>) {
+  const id = oneUuid(p.id, "id");
+  return await comeCollega(p, async (tx) => {
+    const r = await tx`update public.bene_documents set removed_at = now() where id = ${id} and removed_at is null returning id`;
+    if (!r.length) throw new BeniError(404, "document_not_found");
+    return { ok: true };
+  });
+}
+
+async function cartella(p: Record<string, unknown>) {
+  const bene = oneUuid(p.bene_id, "bene_id");
+  if (typeof p.drive_folder !== "string" || !DRIVE_ID.test(p.drive_folder)) throw new BeniError(400, "invalid_drive_folder");
+  return await comeCollega(p, async (tx) => {
+    const r = await tx`update public.beni set drive_folder = ${p.drive_folder as string} where id = ${bene} and removed_at is null returning id`;
+    if (!r.length) throw new BeniError(404, "bene_not_found");
+    return { ok: true };
+  });
+}
+
+const AZIONI: Record<string, (p: Record<string, unknown>) => Promise<unknown>> = {
+  elenco, salva, togli, valore, dettaglio, documento, togli_documento: togliDocumento, cartella,
+};
 
 Deno.serve(async (req) => {
   if (req.method !== "POST") return reply(405, { ok: false, error: "method_not_allowed" });
