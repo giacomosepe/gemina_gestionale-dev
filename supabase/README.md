@@ -181,8 +181,26 @@ It is the structure of production on 2026-10-19, read from its catalog (producti
   `RESEND_WEBHOOK_SECRET` (set by Giacomo in the dashboard, never in the repo or a chat; calls older than 5 minutes refused), then records
   `email.delivered` → `delivered`, `email.bounced` / `email.complained` → `bounced`, `email.opened` → `opened` in `signature_events` (source `resend`,
   once per event and document) for the documents whose `sent_message_id` is that email. Any other email is ignored with 200.
+- Staff permissions (2026-11-12, migrations 20261112161836 `staff_permissions_foundation` and 20261112164745 `staff_permissions_enforced`, test 035):
+  `public.permissions` (30 keys, e.g. `commissions.mark_paid`) and `public.role_permissions` (organization × `staff_role` × permission, `scope`
+  `all` | `own`; no row = not allowed), filled from Giacomo's sheet «Matrice permessi Gestionale» (admin 30, manager 26, associate 20).
+  `private.has_permission(key)`, `private.permission_scope(key)`, `private.can_on_partner(key, partner)`, `private.can_on_company(key, company)`.
+  20 functions and the write policies of beni, bene_values, bene_documents, supplier_invoice_allocations, companies, company_members, conversations,
+  partners, partner_members, comments, documents, messages, reminders, scadenze, signature_attachments (+ files), supplier_invoices (delete) and
+  vat_settlements check the matrix; reads stay open to all staff. `own` = segnalatori of which the caller is Reference Manager (for
+  `invoices.link_company`: companies brought by such a segnalatore). Changing a permission = one row in `role_permissions`, no migration.
+  Storage bucket policies still check `is_staff()`.
+- Roles managed in Supabase (2026-11-12, migration 20261112164605 `staff_roles_managed_in_supabase`): the role of someone who is already staff changes
+  only through `public.set_staff_role(profile, role)` (permission `staff.manage`; never one's own). The Zite Ruoli table still decides who is in
+  the team: the bridge creates or brings back the staff profile with Zite's role as the starting role; its later `staff_role` writes are ignored
+  (trigger `profiles_keep_staff_role`).
+- Reference Manager of a segnalatore (2026-11-12, migrations 20261112162730 and 20261112163153): `partners.reference_manager_id`, a current staff
+  profile (trigger), never written by the Zite sync; all segnalatori of 12 Nov assigned to Giacomo. Edge Function `segnalatori` (v1, verify_jwt off:
+  it checks `BRIDGE_SECRET_STAFF`), action `invitato { zite_user_id, zite_segnalatore_id }`: after the Gestionale sends the portal invitation, the
+  colleague who sent it becomes Reference Manager if none is set (never an overwrite). The same migration made Francesca Sepe `former_staff`.
+- `anon` cannot execute `supplier_invoices_page` / `supplier_invoices_summary` (2026-11-12, migration 20261112154604).
 - Security advisor, expected: INFO `rls_enabled_no_policy` on `private.settings` (on purpose: no policy = nobody but the server can read it); warnings: leaked-password protection; `authenticated_security_definer_function_executable` for
   `mark_conversation_read`, `partner_threads`, `staff_colleagues`, `confirm_document_upload`, `remove_document`,
-  `notify_document`, `mark_documents_read`, `partner_documents`, `partner_payments`, `partner_commissions`, `partner_pratica_invoiced`, `rebuild_all_commissions`, `mark_commissions_invoiced`, `mark_commissions_paid`, `invoice_pratica_options`, `link_invoice_to_pratica`, `unlink_invoice_pratica`, `link_invoice_to_company`, `correct_commission_invoice`, `unmark_commissions_paid`, `unmark_commissions_invoiced` (meant to be called by signed-in users; each checks the
+  `notify_document`, `mark_documents_read`, `partner_documents`, `partner_payments`, `partner_commissions`, `partner_pratica_invoiced`, `rebuild_all_commissions`, `mark_commissions_invoiced`, `mark_commissions_paid`, `invoice_pratica_options`, `link_invoice_to_pratica`, `unlink_invoice_pratica`, `link_invoice_to_company`, `correct_commission_invoice`, `unmark_commissions_paid`, `unmark_commissions_invoiced`, `set_staff_role`, plus the November ones (`assign_supplier_invoices`, `create_upload_portal`, `revoke_upload_portal`, `set_pratica_beneficiary`, `set_supplier_category`, `supplier_invoice_proposal`, `pratica_beni`) (meant to be called by signed-in users; each checks the
   caller inside).
 - Later: token hook, MFA.

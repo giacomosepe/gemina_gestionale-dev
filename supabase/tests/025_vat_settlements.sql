@@ -81,11 +81,11 @@ begin
   -- 5. structure: RLS on, only the four staff policies, no partner or client policy
   ok := (select relrowsecurity from pg_class where oid = 'public.vat_settlements'::regclass)
         and (select count(*) from pg_policies where schemaname = 'public' and tablename = 'vat_settlements') = 4
-        and exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'vat_settlements' and cmd = 'DELETE' and qual like '%admin%')
+        and exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'vat_settlements' and cmd = 'DELETE' and qual like '%vat.edit%')  -- since 2026-11-12 the permission, not the role name
         and not has_table_privilege('anon', 'public.vat_settlements', 'select')
         and exists (select 1 from pg_trigger where tgrelid = 'public.vat_settlements'::regclass and tgname = 'vat_settlements_touch');
   failures := failures + (not ok)::int;
-  report := report || format(E'%s RLS is on with exactly four policies (staff read, administrator insert/update/delete); anon has no access; updated_at trigger present\n', case when ok then 'PASS' else 'FAIL' end);
+  report := report || format(E'%s RLS is on with exactly four policies (staff read; insert/update/delete with permission vat.edit, admin only); anon has no access; updated_at trigger present\n', case when ok then 'PASS' else 'FAIL' end);
 
   raise exception E'TEST REPORT (025 vat settlements): % failure(s)\n%', failures, report;
 end $$;
