@@ -55,7 +55,10 @@ begin
 
   org := (row_json ->> 'organization_id')::uuid;
   if org is null and tg_table_name = 'profiles' then org := private.profile_organization_id((row_json ->> 'id')::uuid); end if;
-  if org is null then org := private.default_organization_id(); end if;
+  if org is null then
+    -- a profile that belongs to nobody yet (a fresh sign-up when several organizations exist) has no organization to log under: skip it
+    begin org := private.default_organization_id(); exception when others then return null; end;
+  end if;
 
   insert into public.audit_log (organization_id, actor_id, table_name, row_id, action, old_values, new_values)
   values (org, (select auth.uid()), tg_table_name, row_json ->> 'id', lower(tg_op), o, n);
