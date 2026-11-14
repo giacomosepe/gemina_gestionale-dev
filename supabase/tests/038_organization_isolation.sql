@@ -26,6 +26,9 @@ begin
 
   -- 2. behaviour --------------------------------------------------------------------------------------------------------------
   insert into public.organizations (id, name) values (org_b, 'Test organization B');
+  -- permissions are kept per organization: a new organization starts with a copy of the matrix of the first one
+  insert into public.role_permissions (staff_role, permission, scope, organization_id)
+    select staff_role, permission, scope, org_b from public.role_permissions where organization_id = org_a;
   insert into auth.users (id, email, aud, role) values
     (ua, 'iso-a@example.test', 'authenticated', 'authenticated'), (ub, 'iso-b@example.test', 'authenticated', 'authenticated');
   perform set_config('gemina.staff_role_change', 'on', true);
