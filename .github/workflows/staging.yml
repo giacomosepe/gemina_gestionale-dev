@@ -38,7 +38,7 @@ jobs:
         run: supabase db push --remote --include-all --yes
       - name: Deploy Edge Functions
         if: ${{ inputs.deploy_functions }}
-        run: supabase functions deploy --project-ref "$PROJECT_REF" --use-api --no-verify-jwt
+        run: supabase functions deploy --project-ref "$PROJECT_REF" --use-api --no-verify-jwt --yes
       - name: Run database tests
         env:
           PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
