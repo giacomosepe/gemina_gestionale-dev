@@ -4,6 +4,7 @@
 do $$
 declare
   n int;
+  adm uuid := (select id from public.profiles where role = 'staff' and staff_role = 'admin' order by created_at limit 1);
   report text := '';
   failures int := 0;
 begin
@@ -12,6 +13,9 @@ begin
      or not exists (select 1 from pg_attribute where attrelid = 'private.si_attr'::regclass and attname = 'asset_ids' and not attisdropped) then
     failures := failures + 1; report := report || E'\nFAIL private.si_attr has not asset_ids';
   else report := report || E'\nok   private.si_attr.asset_ids'; end if;
+
+  perform set_config('request.jwt.claims', json_build_object('sub', adm, 'role', 'authenticated')::text, true);
+  set local role authenticated;
 
   -- the functions run (an unknown attribute fails only at run time)
   begin
@@ -35,5 +39,6 @@ begin
     failures := failures + 1; report := report || E'\nFAIL ' || sqlerrm;
   end;
 
+  reset role;
   raise exception 'TEST REPORT 037 english regressions: % failure(s)%', failures, report;
 end $$;
