@@ -19,6 +19,7 @@ begin
   update public.profiles set role = 'staff', staff_role = 'manager', zite_user_id = 't20-z-mgr' where id = u_mgr;
   update public.profiles set role = 'partner' where id = u_part;
   insert into public.partners (zite_segnalatore_id, name, email, organization_id) values ('t20-a', 'T20 A', 't20-part@example.test', org) returning id into pa;
+  update public.partners set reference_manager_id = u_mgr where id = pa;
   insert into public.partner_members (partner_id, profile_id) values (pa, u_part);
   insert into public.companies (name, zite_azienda_id, organization_id) values ('T20 X', 't20-x', org) returning id into cx;
   insert into public.companies (name, zite_azienda_id, organization_id) values ('T20 client', 't20-client', org) returning id into cclient;

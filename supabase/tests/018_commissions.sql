@@ -18,7 +18,7 @@ begin
     (u_p, 't18-p@example.test', 'authenticated', 'authenticated'), (u_staff, 't18-staff@example.test', 'authenticated', 'authenticated'),
     (u_client, 't18-client@example.test', 'authenticated', 'authenticated');
   update public.profiles set role = 'partner' where id = u_p;
-  update public.profiles set role = 'staff', staff_role = 'manager', zite_user_id = 't18-zite-staff' where id = u_staff;
+  update public.profiles set role = 'staff', staff_role = 'admin', zite_user_id = 't18-zite-staff' where id = u_staff;
   update public.profiles set role = 'client' where id = u_client;
   insert into public.partners (zite_segnalatore_id, name, email, organization_id) values ('t18-a', 'T18 A', 't18-p@example.test', org) returning id into pa;
   insert into public.partners (zite_segnalatore_id, name, email, organization_id) values ('t18-b', 'T18 B', 't18-b@example.test', org) returning id into pb;
