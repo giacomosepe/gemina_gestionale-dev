@@ -49,10 +49,13 @@ Each becomes the same name with `case` or `asset` in place of `pratica` or `bene
 4. A guard test (036) fails when a table, column or function name contains a glossary word in Italian. Until the rename is applied it lists the names above as known exceptions, and the list is emptied by the rename.
 5. The same names are used in the new tables of every later milestone from the start.
 
-## Left for later (known exceptions of guard test 036 and of the rename)
+## Values (second part, applied on staging 14 Nov 2026, migrations 20261114190000 and 20261114190500)
 
-- The `zite_*`, `record_zite_id` and `trattativa_zite_id` columns (and the indexes and constraints that carry `zite` in their name): they become one `legacy_id` column when the import runner is built (M1).
-- Permission keys in `public.permissions` (`beni.manage`, `scadenze.manage`, `pratiche.set_beneficiary`, `invoices.link_pratica`): data, not names. They are renamed with the permissions screen, together with the policies and functions that use them.
-- Text values such as invoice statuses and stage names (`Emessa`, `Incassata`, `Provvigioni maturate`), user-visible messages, and Italian keys inside the JSON that functions read or return (`cliente`, `fornitore`, `stato`, `nome`, the facet names `bene` and `tipo`).
-- Edge Function folder names (`beni`, `segnalatori`, `aziende-sync`, `allegati-firma`, `fatture-import`, `portale-fatture`) and the one-off scripts in `supabase/scripts`: renamed when the new app calls them.
-- JSON keys the functions now read and return were renamed with their columns: `pratica_id` is `case_id`, `bene_id` is `asset_id`, `bene_name` is `asset_name`.
+Invoice statuses (`issued`, `paid`, `cancelled`, `overdue`), commission stages (`theoretical`, `invoiced`, `matured`, `received`), notification events (`messages`, `documents`, `reminders`), signature states (`to_prepare`, `ready`, `sent`, `partly_signed`, `signed`, `archived`), supplier invoice states and facet keys, signers (`client`, `gemina`), the JSON keys of the supplier invoice, case beneficiary and import functions, and the permission keys (`cases.set_beneficiary`, `deadlines.manage`, `assets.manage`, `invoices.link_case`). Guard test 036 also fails if an old value comes back in a function or view.
+
+## Left for later (known exceptions of guard test 036)
+
+- The `zite_*`, `record_zite_id` and `trattativa_zite_id` columns (and the indexes and constraints that carry `zite` in their name): they become one `legacy_id` column when the import runner is built (M1). The same step maps the Italian values that come from Zite (for example `cases.status`).
+- Edge Function folder names (`beni`, `segnalatori`, `aziende-sync`, `allegati-firma`, `fatture-import`, `portale-fatture`), their action names, and the one-off scripts in `supabase/scripts`: renamed when the new app calls them.
+- Texts the user reads (messages, labels, permission area names, the default asset name "Bene 1") stay Italian on purpose; so do the stop words of `private.name_tokens`.
+- Local variable and alias names inside function bodies (for example `v_pratica`, `da_assegnare` as a column alias in `si_attrs`): invisible from outside, renamed when a function is next rewritten.
