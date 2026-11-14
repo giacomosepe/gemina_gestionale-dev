@@ -1,0 +1,9 @@
+{
+  // Cloudflare Workers (static assets). The Worker is named like the Cloudflare project; the build runs `npm run build` at the repo root.
+  "name": "gemina-gestionale-dev",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "./web/dist",
+    "not_found_handling": "single-page-application"
+  }
+}
