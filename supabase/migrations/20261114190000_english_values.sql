@@ -134,8 +134,8 @@ begin
   update public.signature_attachments set signers = array_replace(signers, 'cliente', 'client') where 'cliente' = any (signers);
 
   -- 4. permission keys: role_permissions follows by on update cascade; the policies that name them are written again ---------------------
-  update public.permissions p set key = m.new_value from vmap m
-   where m.scope = '*' and m.old_value = p.key and m.old_value ~ '^(pratiche|scadenze|beni|invoices)\.';
+  update public.permissions p set key = vm.new_value from vmap vm
+   where vm.scope = '*' and vm.old_value = p.key and vm.old_value ~ '^(pratiche|scadenze|beni|invoices)\.';
   for r in
     select pol.schemaname, pol.tablename, pol.policyname, pol.qual, pol.with_check from pg_policies pol where pol.schemaname = 'public'
   loop
