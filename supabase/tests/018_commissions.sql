@@ -120,7 +120,7 @@ begin
 
   -- structure and access
   ok := (select relrowsecurity from pg_class where oid = 'public.commissions'::regclass)
-        and (select count(*) from pg_policies where tablename = 'commissions') = 1
+        and (select count(*) from pg_policies where tablename = 'commissions' and permissive = 'PERMISSIVE') = 1
         and not has_table_privilege('authenticated', 'public.commissions', 'insert') and not has_table_privilege('authenticated', 'public.commissions', 'update')
         and not has_table_privilege('authenticated', 'public.commissions', 'delete') and not has_table_privilege('anon', 'public.commissions', 'select')
         and not has_table_privilege('anon', 'public.commission_stages_v', 'select')

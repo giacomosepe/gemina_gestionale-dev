@@ -73,7 +73,7 @@ begin
         and has_function_privilege('authenticated', 'public.partner_case_invoiced()', 'execute') and not has_function_privilege('anon', 'public.partner_case_invoiced()', 'execute');
   failures := failures + (not ok)::int;
   report := report || format(E'%s columns are the agreed ones and no staff-only column (%s); authenticated may call both functions, anonymous neither\n', case when ok then 'PASS' else 'FAIL' end, cols);
-  ok := (select count(*) from pg_policies where tablename = 'commissions') = 1 and not has_table_privilege('authenticated', 'public.commissions', 'insert')
+  ok := (select count(*) from pg_policies where tablename = 'commissions' and permissive = 'PERMISSIVE') = 1 and not has_table_privilege('authenticated', 'public.commissions', 'insert')
         and not has_table_privilege('anon', 'public.commissions', 'select');
   failures := failures + (not ok)::int;
   report := report || format(E'%s commissions is untouched: still one staff-only policy, no write for signed-in users, no anonymous read\n', case when ok then 'PASS' else 'FAIL' end);

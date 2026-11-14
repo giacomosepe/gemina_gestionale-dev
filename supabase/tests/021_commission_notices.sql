@@ -134,7 +134,7 @@ begin
         and not has_function_privilege('authenticated', 'private.setting_on(text)', 'execute')
         and has_table_privilege('authenticated', 'public.commission_notices', 'select') and not has_table_privilege('authenticated', 'public.commission_notices', 'insert')
         and not has_table_privilege('anon', 'public.commission_notices', 'select')
-        and (select count(*) from pg_policies where tablename = 'commission_notices') = 1;
+        and (select count(*) from pg_policies where tablename = 'commission_notices' and permissive = 'PERMISSIVE') = 1;
   failures := failures + (not ok)::int;
   report := report || format(E'%s the trigger exists; the functions have a fixed search path; the settings are not reachable from outside; the outbox is staff-read only\n', case when ok then 'PASS' else 'FAIL' end);
 

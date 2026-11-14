@@ -80,7 +80,7 @@ begin
 
   -- 5. structure: RLS on, only the four staff policies, no partner or client policy
   ok := (select relrowsecurity from pg_class where oid = 'public.vat_settlements'::regclass)
-        and (select count(*) from pg_policies where schemaname = 'public' and tablename = 'vat_settlements') = 4
+        and (select count(*) from pg_policies where schemaname = 'public' and tablename = 'vat_settlements' and permissive = 'PERMISSIVE') = 4
         and exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'vat_settlements' and cmd = 'DELETE' and qual like '%vat.edit%')  -- since 2026-11-12 the permission, not the role name
         and not has_table_privilege('anon', 'public.vat_settlements', 'select')
         and exists (select 1 from pg_trigger where tgrelid = 'public.vat_settlements'::regclass and tgname = 'vat_settlements_touch');
