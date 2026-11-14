@@ -1,0 +1,6 @@
+# Minimal config so the Supabase CLI can link a project and push the migrations.
+# Local development settings are added when the local stack is set up (PM-141).
+project_id = "geminup"
+
+[db]
+major_version = 17
