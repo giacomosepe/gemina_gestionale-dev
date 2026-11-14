@@ -18,4 +18,4 @@ jobs:
       - name: Type check the shared base and the sample function
         run: deno check --node-modules-dir=none supabase/functions/_shared/*.ts supabase/functions/ping/index.ts
       - name: Unit tests
-        run: deno test --node-modules-dir=none supabase/functions/_shared
+        run: deno test --node-modules-dir=none --allow-env=TEST_DB_URL supabase/functions/_shared
