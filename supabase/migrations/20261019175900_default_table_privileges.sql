@@ -10,3 +10,6 @@
 -- already exists, so it changes nothing. Row access is still decided by the row level security policies.
 alter default privileges for role postgres in schema public grant all on tables to authenticated, service_role;
 alter default privileges for role postgres in schema public grant usage, select on sequences to authenticated, service_role;
+-- Production's default gives anon nothing on new tables; a project created with automatic exposure off
+-- gives anon (and the others) maintenance rights such as TRUNCATE. Remove them for anon.
+alter default privileges for role postgres in schema public revoke all on tables from anon;
