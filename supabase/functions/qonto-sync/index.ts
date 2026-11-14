@@ -9,7 +9,7 @@
 // - Money is integer cents as Qonto gives it (total_amount_cents, vat_amount_cents); net = total - VAT (a generated column).
 //   Credit notes are stored negative. No setup-fee exclusion and no DSO here.
 // - Status as Zite statoDaQonto: paid -> Incassata; canceled -> Annullata; unpaid, late, partial -> Emessa. Drafts and unknown
-//   statuses are not imported (counted as skipped). "Scaduta" is never stored.
+//   statuses are not imported (counted as skipped). "overdue" is never stored.
 // - paid_at is Qonto's paid_at (date part), null when absent: no fallback to the issue date. A credit note is stored Incassata
 //   (as in Zite) with paid_at null unless Qonto sends one.
 // - company_id comes from companies.qonto_client_id = Qonto client id; unmatched documents are kept with company_id null and
@@ -81,9 +81,9 @@ type Doc = {
 };
 
 function statoDaQonto(status: string): string | null {
-  if (status === "paid") return "Incassata";
-  if (status === "canceled") return "Annullata";
-  if (status === "unpaid" || status === "late" || status.includes("partial")) return "Emessa";
+  if (status === "paid") return "paid";
+  if (status === "canceled") return "cancelled";
+  if (status === "unpaid" || status === "late" || status.includes("partial")) return "issued";
   return null;  // draft or unrecognised: not imported
 }
 
@@ -114,7 +114,7 @@ function mapCreditNote(n: Record<string, any>): Doc | "skip" {
   if (typeof n.id !== "string" || !n.id || !issue || total === null || vat === null) return "skip";
   return {
     qonto_id: n.id, kind: "credit_note", number: text(n.number, 100) ?? `NC-${n.id.slice(0, 6)}`,
-    status_qonto: (text(n.status, 50) ?? "credit_note"), status: "Incassata",  // settled on issue, as in Zite
+    status_qonto: (text(n.status, 50) ?? "credit_note"), status: "paid",  // settled on issue, as in Zite
     issue_date: issue, due_date: issue, paid_at: day(n.paid_at), currency: currencyOf(n.currency),
     total_cents: -Math.abs(total), vat_cents: -Math.abs(vat), qonto_client_id: text(n.client?.id, 100),
     description: text(n.items?.[0]?.title, 500), raw: n,

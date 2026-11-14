@@ -33,36 +33,36 @@ begin
 
   -- seed (2027 issue dates for VAT; due dates around today for the overdue flag)
   insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, paid_at, total_cents, vat_cents, raw) values
-    ('t12-due-yday',   'invoice', 'T12-1', 'unpaid',   'Emessa',    date '2027-02-10', today - 1, null,              122000, 22000, '{}'),
-    ('t12-due-today',  'invoice', 'T12-2', 'unpaid',   'Emessa',    date '2027-02-11', today,     null,              122000, 22000, '{}'),
-    ('t12-due-future', 'invoice', 'T12-3', 'unpaid',   'Emessa',    date '2027-02-12', today + 1, null,              122000, 22000, '{}'),
-    ('t12-no-due',     'invoice', 'T12-4', 'unpaid',   'Emessa',    date '2027-02-13', null,      null,              122000, 22000, '{}'),
-    ('t12-late',       'invoice', 'T12-5', 'late',     'Emessa',    date '2027-02-14', today - 30, null,             122000, 22000, '{}'),
-    ('t12-paid-old',   'invoice', 'T12-6', 'paid',     'Incassata', date '2027-02-15', today - 30, date '2027-02-20', 122000, 22000, '{}'),
-    ('t12-paid-nodate','invoice', 'T12-7', 'paid',     'Incassata', date '2027-02-16', today - 30, null,             122000, 22000, '{}'),
-    ('t12-cancelled',  'invoice', 'T12-8', 'canceled', 'Annullata', date '2027-02-17', today - 30, null,             122000, 22000, '{}'),
-    ('t12-cn',         'credit_note', 'T12-NC', 'credit_note', 'Incassata', date '2027-03-05', date '2027-03-05', null, -12200, -2200, '{}'),
-    ('t12-q2',         'invoice', 'T12-9', 'paid',     'Incassata', date '2027-04-01', date '2027-04-30', date '2027-04-10', 61000, 11000, '{}');
+    ('t12-due-yday',   'invoice', 'T12-1', 'unpaid',   'issued',    date '2027-02-10', today - 1, null,              122000, 22000, '{}'),
+    ('t12-due-today',  'invoice', 'T12-2', 'unpaid',   'issued',    date '2027-02-11', today,     null,              122000, 22000, '{}'),
+    ('t12-due-future', 'invoice', 'T12-3', 'unpaid',   'issued',    date '2027-02-12', today + 1, null,              122000, 22000, '{}'),
+    ('t12-no-due',     'invoice', 'T12-4', 'unpaid',   'issued',    date '2027-02-13', null,      null,              122000, 22000, '{}'),
+    ('t12-late',       'invoice', 'T12-5', 'late',     'issued',    date '2027-02-14', today - 30, null,             122000, 22000, '{}'),
+    ('t12-paid-old',   'invoice', 'T12-6', 'paid',     'paid', date '2027-02-15', today - 30, date '2027-02-20', 122000, 22000, '{}'),
+    ('t12-paid-nodate','invoice', 'T12-7', 'paid',     'paid', date '2027-02-16', today - 30, null,             122000, 22000, '{}'),
+    ('t12-cancelled',  'invoice', 'T12-8', 'canceled', 'cancelled', date '2027-02-17', today - 30, null,             122000, 22000, '{}'),
+    ('t12-cn',         'credit_note', 'T12-NC', 'credit_note', 'paid', date '2027-03-05', date '2027-03-05', null, -12200, -2200, '{}'),
+    ('t12-q2',         'invoice', 'T12-9', 'paid',     'paid', date '2027-04-01', date '2027-04-30', date '2027-04-10', 61000, 11000, '{}');
   insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, paid_at, total_cents, vat_cents, raw, removed_at)
-    values ('t12-removed', 'invoice', 'T12-R', 'paid', 'Incassata', date '2027-03-06', date '2027-03-06', date '2027-03-07', 122000, 22000, '{}', now());
+    values ('t12-removed', 'invoice', 'T12-R', 'paid', 'paid', date '2027-03-06', date '2027-03-06', date '2027-03-07', 122000, 22000, '{}', now());
 
   -- staff reads the views
   perform set_config('request.jwt.claims', json_build_object('sub', u_s1, 'role', 'authenticated')::text, true);
   set local role authenticated;
 
   -- Scaduta on the day after the due date, not on it
-  ok := (select status_visible from public.invoice_status_v where qonto_id = 't12-due-yday') = 'Scaduta'
+  ok := (select status_visible from public.invoice_status_v where qonto_id = 't12-due-yday') = 'overdue'
         and (select is_overdue and days_overdue = 1 from public.invoice_status_v where qonto_id = 't12-due-yday')
-        and (select status_visible from public.invoice_status_v where qonto_id = 't12-due-today') = 'Emessa'
-        and (select status_visible from public.invoice_status_v where qonto_id = 't12-due-future') = 'Emessa'
-        and (select status_visible from public.invoice_status_v where qonto_id = 't12-no-due') = 'Emessa'
-        and (select status_visible from public.invoice_status_v where qonto_id = 't12-late') = 'Scaduta';
+        and (select status_visible from public.invoice_status_v where qonto_id = 't12-due-today') = 'issued'
+        and (select status_visible from public.invoice_status_v where qonto_id = 't12-due-future') = 'issued'
+        and (select status_visible from public.invoice_status_v where qonto_id = 't12-no-due') = 'issued'
+        and (select status_visible from public.invoice_status_v where qonto_id = 't12-late') = 'overdue';
   failures := failures + (not ok)::int;
   report := report || format(E'%s Scaduta from the day after the due date; due today, in the future or without date stays Emessa\n', case when ok then 'PASS' else 'FAIL' end);
 
-  ok := (select status_visible from public.invoice_status_v where qonto_id = 't12-paid-old') = 'Incassata'
-        and (select status_visible from public.invoice_status_v where qonto_id = 't12-cancelled') = 'Annullata'
-        and (select status_visible from public.invoice_status_v where qonto_id = 't12-cn') = 'Incassata'
+  ok := (select status_visible from public.invoice_status_v where qonto_id = 't12-paid-old') = 'paid'
+        and (select status_visible from public.invoice_status_v where qonto_id = 't12-cancelled') = 'cancelled'
+        and (select status_visible from public.invoice_status_v where qonto_id = 't12-cn') = 'paid'
         and not (select is_overdue from public.invoice_status_v where qonto_id = 't12-paid-old');
   failures := failures + (not ok)::int;
   report := report || format(E'%s paid, cancelled and credit notes are never Scaduta\n', case when ok then 'PASS' else 'FAIL' end);

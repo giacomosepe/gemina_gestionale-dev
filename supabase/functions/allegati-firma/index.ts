@@ -122,7 +122,7 @@ async function prepara(p: Record<string, unknown>) {
   const voci = p.voci.map((raw) => {
     const v = (raw ?? {}) as Record<string, unknown>;
     const firme = Number(v.signatures_required);
-    const signers = Array.isArray(v.signers) ? v.signers.filter((x): x is string => x === "cliente" || x === "gemina") : [];
+    const signers = Array.isArray(v.signers) ? v.signers.filter((x): x is string => x === "client" || x === "gemina") : [];
     if (!Number.isInteger(firme) || firme < 1 || firme > 5 || signers.length === 0) throw new AllegatiError(400, "invalid_voce");
     return { zite_dato_id: text(v.zite_dato_id, "zite_dato_id", 64), name: text(v.name, "name", 200), signatures_required: firme, signers: [...new Set(signers)].slice(0, firme) };
   });

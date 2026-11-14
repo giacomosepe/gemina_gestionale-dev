@@ -57,12 +57,12 @@ begin
     jsonb_build_object('id', pc_only,   'code', 'T15-C1', 'zite_azienda_id', 't15-c', 'status', 'Interrotta', 'is_open', false, 'total_fee_cents', 100000, 'removed', false)));
 
   insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, total_cents, vat_cents, raw, company_id) values
-    ('t15-da', 'invoice', 'T15-1', 'unpaid', 'Emessa', date '2027-01-10', 122000, 22000, '{}', ca),
-    ('t15-db', 'invoice', 'T15-2', 'unpaid', 'Emessa', date '2027-01-11', 122000, 22000, '{}', cb),
-    ('t15-dc', 'invoice', 'T15-3', 'unpaid', 'Emessa', date '2027-01-12', 122000, 22000, '{}', cc),
-    ('t15-dd', 'invoice', 'T15-4', 'unpaid', 'Emessa', date '2027-01-13', 122000, 22000, '{}', cd),
-    ('t15-dn', 'invoice', 'T15-5', 'unpaid', 'Emessa', date '2027-01-14', 122000, 22000, '{}', null),
-    ('t15-dx', 'invoice', 'T15-6', 'canceled', 'Annullata', date '2027-01-15', 122000, 22000, '{}', cb);
+    ('t15-da', 'invoice', 'T15-1', 'unpaid', 'issued', date '2027-01-10', 122000, 22000, '{}', ca),
+    ('t15-db', 'invoice', 'T15-2', 'unpaid', 'issued', date '2027-01-11', 122000, 22000, '{}', cb),
+    ('t15-dc', 'invoice', 'T15-3', 'unpaid', 'issued', date '2027-01-12', 122000, 22000, '{}', cc),
+    ('t15-dd', 'invoice', 'T15-4', 'unpaid', 'issued', date '2027-01-13', 122000, 22000, '{}', cd),
+    ('t15-dn', 'invoice', 'T15-5', 'unpaid', 'issued', date '2027-01-14', 122000, 22000, '{}', null),
+    ('t15-dx', 'invoice', 'T15-6', 'canceled', 'cancelled', date '2027-01-15', 122000, 22000, '{}', cb);
   ok := (select case_id = pa_open and case_link_source = 'auto' and zite_pratica_id = pa_open::text from public.qonto_documents where qonto_id = 't15-da');
   failures := failures + (not ok)::int;
   report := report || format(E'%s one open pratica (and one closed): linked to the open one\n', case when ok then 'PASS' else 'FAIL' end);
@@ -78,7 +78,7 @@ begin
 
   -- a pratica arrives later: the waiting invoice is linked by the next sync
   insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, total_cents, vat_cents, raw, company_id)
-    values ('t15-de', 'invoice', 'T15-7', 'unpaid', 'Emessa', date '2027-01-16', 122000, 22000, '{}', ce);
+    values ('t15-de', 'invoice', 'T15-7', 'unpaid', 'issued', date '2027-01-16', 122000, 22000, '{}', ce);
   ok := (select case_id is null from public.qonto_documents where qonto_id = 't15-de');
   perform private.sync_cases(jsonb_build_array(
     jsonb_build_object('id', pe_1, 'code', 'T15-E1', 'zite_azienda_id', 't15-e', 'status', 'In lavorazione', 'is_open', true, 'total_fee_cents', 100000, 'removed', false)));
@@ -97,7 +97,7 @@ begin
   perform set_config('request.jwt.claims', json_build_object('sub', u_s1, 'role', 'authenticated')::text, true);
   set local role authenticated;
   ok := (select reason_code from public.review_invoices_v where qonto_id = 't15-db') = 'ambiguous'
-        and (select reason_code from public.review_invoices_v where qonto_id = 't15-dd') = 'no_pratica'
+        and (select reason_code from public.review_invoices_v where qonto_id = 't15-dd') = 'no_case'
         and (select reason_code from public.review_invoices_v where qonto_id = 't15-dn') = 'company_unknown'
         and not exists (select 1 from public.review_invoices_v where qonto_id in ('t15-da', 't15-dc', 't15-de', 't15-dx'));
   failures := failures + (not ok)::int;
@@ -149,25 +149,25 @@ begin
   -- helper rows: (pratica, net, status, kind)
   insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, paid_at, total_cents, vat_cents, raw, case_id, case_link_source) values
     -- s1: 500,000 paid + an unpaid invoice of 400,000 -> partial
-    ('t15-s1a', 'invoice', 'S1a', 'paid', 'Incassata', date '2027-02-01', date '2027-02-05', 610000, 110000, '{}', s1, 'zite'),
-    ('t15-s1b', 'invoice', 'S1b', 'unpaid', 'Emessa',  date '2027-02-02', null,             488000,  88000, '{}', s1, 'zite'),
+    ('t15-s1a', 'invoice', 'S1a', 'paid', 'paid', date '2027-02-01', date '2027-02-05', 610000, 110000, '{}', s1, 'zite'),
+    ('t15-s1b', 'invoice', 'S1b', 'unpaid', 'issued',  date '2027-02-02', null,             488000,  88000, '{}', s1, 'zite'),
     -- s2: paid exactly total - tolerance -> fully_paid
-    ('t15-s2a', 'invoice', 'S2a', 'paid', 'Incassata', date '2027-02-01', date '2027-02-05', 999000 * 122 / 100, 999000 * 22 / 100, '{}', s2, 'zite'),
+    ('t15-s2a', 'invoice', 'S2a', 'paid', 'paid', date '2027-02-01', date '2027-02-05', 999000 * 122 / 100, 999000 * 22 / 100, '{}', s2, 'zite'),
     -- s3: paid total + tolerance -> fully_paid
-    ('t15-s3a', 'invoice', 'S3a', 'paid', 'Incassata', date '2027-02-01', date '2027-02-05', 1001000 * 122 / 100, 1001000 * 22 / 100, '{}', s3, 'zite'),
+    ('t15-s3a', 'invoice', 'S3a', 'paid', 'paid', date '2027-02-01', date '2027-02-05', 1001000 * 122 / 100, 1001000 * 22 / 100, '{}', s3, 'zite'),
     -- s4: paid total + tolerance + 1 -> overpaid
-    ('t15-s4a', 'invoice', 'S4a', 'paid', 'Incassata', date '2027-02-01', date '2027-02-05', 1001001 + 220220, 220220, '{}', s4, 'zite'),
+    ('t15-s4a', 'invoice', 'S4a', 'paid', 'paid', date '2027-02-01', date '2027-02-05', 1001001 + 220220, 220220, '{}', s4, 'zite'),
     -- s5: 1,200,000 paid and a credit note of 200,000 -> 1,000,000 fully_paid
-    ('t15-s5a', 'invoice', 'S5a', 'paid', 'Incassata', date '2027-02-01', date '2027-02-05', 1200000 + 264000, 264000, '{}', s5, 'zite'),
-    ('t15-s5n', 'credit_note', 'S5n', 'credit_note', 'Incassata', date '2027-02-06', null, -(200000 + 44000), -44000, '{}', s5, 'zite'),
+    ('t15-s5a', 'invoice', 'S5a', 'paid', 'paid', date '2027-02-01', date '2027-02-05', 1200000 + 264000, 264000, '{}', s5, 'zite'),
+    ('t15-s5n', 'credit_note', 'S5n', 'credit_note', 'paid', date '2027-02-06', null, -(200000 + 44000), -44000, '{}', s5, 'zite'),
     -- s6: paid 1,000,000 and a cancelled invoice of 500,000 -> fully_paid, cancelled not counted
-    ('t15-s6a', 'invoice', 'S6a', 'paid', 'Incassata', date '2027-02-01', date '2027-02-05', 1000000 + 220000, 220000, '{}', s6, 'zite'),
-    ('t15-s6x', 'invoice', 'S6x', 'canceled', 'Annullata', date '2027-02-02', null, 500000 + 110000, 110000, '{}', s6, 'zite'),
+    ('t15-s6a', 'invoice', 'S6a', 'paid', 'paid', date '2027-02-01', date '2027-02-05', 1000000 + 220000, 220000, '{}', s6, 'zite'),
+    ('t15-s6x', 'invoice', 'S6x', 'canceled', 'cancelled', date '2027-02-02', null, 500000 + 110000, 110000, '{}', s6, 'zite'),
     -- s7: only a credit note, nothing paid -> partial
-    ('t15-s7n', 'credit_note', 'S7n', 'credit_note', 'Incassata', date '2027-02-06', null, -(100000 + 22000), -22000, '{}', s7, 'zite'),
+    ('t15-s7n', 'credit_note', 'S7n', 'credit_note', 'paid', date '2027-02-06', null, -(100000 + 22000), -22000, '{}', s7, 'zite'),
     -- s8, s9: paid something but no total
-    ('t15-s8a', 'invoice', 'S8a', 'paid', 'Incassata', date '2027-02-01', date '2027-02-05', 122000, 22000, '{}', s8, 'zite'),
-    ('t15-s9a', 'invoice', 'S9a', 'paid', 'Incassata', date '2027-02-01', date '2027-02-05', 122000, 22000, '{}', s9, 'zite');
+    ('t15-s8a', 'invoice', 'S8a', 'paid', 'paid', date '2027-02-01', date '2027-02-05', 122000, 22000, '{}', s8, 'zite'),
+    ('t15-s9a', 'invoice', 'S9a', 'paid', 'paid', date '2027-02-01', date '2027-02-05', 122000, 22000, '{}', s9, 'zite');
   -- s10: nothing at all
 
   perform set_config('request.jwt.claims', json_build_object('sub', u_s1, 'role', 'authenticated')::text, true);

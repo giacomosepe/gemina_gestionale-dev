@@ -247,7 +247,7 @@ begin
   report := report || format(E'%s a Gemina document is not announced by itself (expect 0, got %s)\n', case when ok then 'PASS' else 'FAIL' end, n);
   perform public.notify_document(d_gem);
   reset role;
-  select count(*) into n from public.notifications where document_id = d_gem and recipient_id = u_ref and kind = 'document' and link = 'documenti';
+  select count(*) into n from public.notifications where document_id = d_gem and recipient_id = u_ref and kind = 'document' and link = 'documents';
   ok := n = 1; failures := failures + (not ok)::int;
   report := report || format(E'%s "Notifica segnalatore" puts a bell for the segnalatore (expect 1, got %s)\n', case when ok then 'PASS' else 'FAIL' end, n);
   select count(*) into n from public.documents where id = d_gem and notified_at is not null;

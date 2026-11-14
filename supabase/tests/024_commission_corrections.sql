@@ -23,10 +23,10 @@ begin
   insert into public.company_members (company_id, profile_id) values (cclient, u_client);
   update public.profiles set role = 'client' where id = u_client;
   insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, paid_at, total_cents, vat_cents, raw, company_id, case_link_source) values
-    ('t24-mat',  'invoice', 'C1', 'paid', 'Incassata', date '2027-02-02', date '2027-03-02', date '2027-02-20', 122000, 22000, '{}', cx, 'manual'),
-    ('t24-inv',  'invoice', 'C2', 'paid', 'Incassata', date '2027-02-03', date '2027-03-03', date '2027-02-21', 122000, 22000, '{}', cx, 'manual'),
-    ('t24-rec',  'invoice', 'C3', 'paid', 'Incassata', date '2027-02-04', date '2027-03-04', date '2027-02-22', 122000, 22000, '{}', cx, 'manual'),
-    ('t24-inv2', 'invoice', 'C4', 'paid', 'Incassata', date '2027-02-05', date '2027-03-05', date '2027-02-23', 122000, 22000, '{}', cx, 'manual');
+    ('t24-mat',  'invoice', 'C1', 'paid', 'paid', date '2027-02-02', date '2027-03-02', date '2027-02-20', 122000, 22000, '{}', cx, 'manual'),
+    ('t24-inv',  'invoice', 'C2', 'paid', 'paid', date '2027-02-03', date '2027-03-03', date '2027-02-21', 122000, 22000, '{}', cx, 'manual'),
+    ('t24-rec',  'invoice', 'C3', 'paid', 'paid', date '2027-02-04', date '2027-03-04', date '2027-02-22', 122000, 22000, '{}', cx, 'manual'),
+    ('t24-inv2', 'invoice', 'C4', 'paid', 'paid', date '2027-02-05', date '2027-03-05', date '2027-02-23', 122000, 22000, '{}', cx, 'manual');
   select id into d_mat from public.qonto_documents where qonto_id = 't24-mat';
   select id into d_inv from public.qonto_documents where qonto_id = 't24-inv';
   select id into d_rec from public.qonto_documents where qonto_id = 't24-rec';
@@ -48,12 +48,12 @@ begin
 
   -- 1. wrong number corrected on an invoiced line
   select * into res from public.correct_commission_invoice(array[l_inv, l_inv], '  FS-1  ', date '2027-03-12');
-  ok := res.id = l_inv and res.stage = 'Provvigioni fatturate' and res.partner_invoice_number = 'FS-1' and res.partner_invoiced_on = date '2027-03-12'
+  ok := res.id = l_inv and res.stage = 'invoiced' and res.partner_invoice_number = 'FS-1' and res.partner_invoiced_on = date '2027-03-12'
         and res.amount_cents = 10000 and res.base_cents = 100000
         and (select count(*) from public.commission_corrections where commission_id = l_inv) = 1
         and exists (select 1 from public.commission_corrections where commission_id = l_inv and action = 'correct_invoice'
                       and old_invoice_number = 'FS-WRONG' and new_invoice_number = 'FS-1' and old_invoiced_on = date '2027-03-10' and new_invoiced_on = date '2027-03-12'
-                      and old_stage = 'Provvigioni fatturate' and new_stage = 'Provvigioni fatturate' and done_by = u_mgr);
+                      and old_stage = 'invoiced' and new_stage = 'invoiced' and done_by = u_mgr);
   failures := failures + (not ok)::int;
   report := report || format(E'%s a wrong number is corrected on an invoiced line (trimmed, repeated id counted once); amount unchanged; one correction row with old and new, and who\n', case when ok then 'PASS' else 'FAIL' end);
 
@@ -71,11 +71,11 @@ begin
 
   -- 3. paid undone, then redone
   select * into res from public.unmark_commissions_paid(array[l_rec]);
-  ok := res.id = l_rec and res.stage = 'Provvigioni fatturate' and res.paid_on is null and res.partner_invoice_number = 'FS-8' and res.amount_cents = 10000
+  ok := res.id = l_rec and res.stage = 'invoiced' and res.paid_on is null and res.partner_invoice_number = 'FS-8' and res.amount_cents = 10000
         and exists (select 1 from public.commission_corrections where commission_id = l_rec and action = 'unmark_paid' and old_paid_on = date '2027-04-01' and new_paid_on is null
-                      and old_stage = 'Provvigioni ricevute' and new_stage = 'Provvigioni fatturate');
+                      and old_stage = 'received' and new_stage = 'invoiced');
   select * into res from public.mark_commissions_paid(array[l_rec], date '2027-04-03');
-  ok := ok and res.stage = 'Provvigioni ricevute' and res.paid_on = date '2027-04-03';
+  ok := ok and res.stage = 'received' and res.paid_on = date '2027-04-03';
   failures := failures + (not ok)::int;
   report := report || format(E'%s "paid" undone (back to fatturate, number kept, logged) and marked paid again with the normal function\n', case when ok then 'PASS' else 'FAIL' end);
 
@@ -85,11 +85,11 @@ begin
   ok := k = 1 and (select partner_invoice_number = 'FS-8' from public.commissions where id = l_rec);
   perform public.unmark_commissions_paid(array[l_rec]);
   select * into res from public.unmark_commissions_invoiced(array[l_rec]);
-  ok := ok and res.stage = 'Provvigioni maturate' and res.partner_invoice_number is null and res.partner_invoiced_on is null
+  ok := ok and res.stage = 'matured' and res.partner_invoice_number is null and res.partner_invoiced_on is null
         and exists (select 1 from public.commission_corrections where commission_id = l_rec and action = 'unmark_invoiced' and old_invoice_number = 'FS-8' and new_invoice_number is null
-                      and old_stage = 'Provvigioni fatturate' and new_stage = 'Provvigioni maturate');
+                      and old_stage = 'invoiced' and new_stage = 'matured');
   select * into res from public.mark_commissions_invoiced(array[l_rec], 'FS-8B', date '2027-03-20');
-  ok := ok and res.stage = 'Provvigioni fatturate' and res.partner_invoice_number = 'FS-8B';
+  ok := ok and res.stage = 'invoiced' and res.partner_invoice_number = 'FS-8B';
   failures := failures + (not ok)::int;
   report := report || format(E'%s "invoiced" undone: refused while the line is received (message says to undo the payment first), allowed after; back to matured, logged; can be marked again\n', case when ok then 'PASS' else 'FAIL' end);
 

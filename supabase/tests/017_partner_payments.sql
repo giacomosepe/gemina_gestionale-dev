@@ -46,21 +46,21 @@ begin
 
   insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, paid_at, total_cents, vat_cents, raw, company_id, case_id, case_link_source, removed_at) values
     -- X: referral of A (and C) active from 2027-01-01
-    ('t17-x-paid',   'invoice', 'X1', 'paid',     'Incassata', date '2027-02-10', date '2027-03-10', date '2027-03-01', 122000, 22000, '{}', cx, prat, 'zite', null),
-    ('t17-x-nodate', 'invoice', 'X2', 'paid',     'Incassata', date '2027-02-11', date '2027-03-11', null,              122000, 22000, '{}', cx, null, null, null),
-    ('t17-x-unpaid', 'invoice', 'X3', 'unpaid',   'Emessa',    date '2027-02-12', date '2027-03-12', null,              122000, 22000, '{}', cx, null, null, null),
-    ('t17-x-late',   'invoice', 'X4', 'late',     'Emessa',    date '2027-02-13', date '2027-02-20', null,              122000, 22000, '{}', cx, null, null, null),
-    ('t17-x-cancel', 'invoice', 'X5', 'canceled', 'Annullata', date '2027-02-14', date '2027-03-14', null,              122000, 22000, '{}', cx, null, null, null),
-    ('t17-x-credit', 'credit_note', 'X6', 'credit_note', 'Incassata', date '2027-02-15', date '2027-02-15', null,       -12200, -2200, '{}', cx, null, null, null),
-    ('t17-x-gone',   'invoice', 'X7', 'paid',     'Incassata', date '2027-02-16', date '2027-03-16', date '2027-03-02', 122000, 22000, '{}', cx, null, null, now()),
-    ('t17-x-before', 'invoice', 'X8', 'paid',     'Incassata', date '2026-12-31', date '2027-01-30', date '2027-01-10', 122000, 22000, '{}', cx, null, null, null),
+    ('t17-x-paid',   'invoice', 'X1', 'paid',     'paid', date '2027-02-10', date '2027-03-10', date '2027-03-01', 122000, 22000, '{}', cx, prat, 'zite', null),
+    ('t17-x-nodate', 'invoice', 'X2', 'paid',     'paid', date '2027-02-11', date '2027-03-11', null,              122000, 22000, '{}', cx, null, null, null),
+    ('t17-x-unpaid', 'invoice', 'X3', 'unpaid',   'issued',    date '2027-02-12', date '2027-03-12', null,              122000, 22000, '{}', cx, null, null, null),
+    ('t17-x-late',   'invoice', 'X4', 'late',     'issued',    date '2027-02-13', date '2027-02-20', null,              122000, 22000, '{}', cx, null, null, null),
+    ('t17-x-cancel', 'invoice', 'X5', 'canceled', 'cancelled', date '2027-02-14', date '2027-03-14', null,              122000, 22000, '{}', cx, null, null, null),
+    ('t17-x-credit', 'credit_note', 'X6', 'credit_note', 'paid', date '2027-02-15', date '2027-02-15', null,       -12200, -2200, '{}', cx, null, null, null),
+    ('t17-x-gone',   'invoice', 'X7', 'paid',     'paid', date '2027-02-16', date '2027-03-16', date '2027-03-02', 122000, 22000, '{}', cx, null, null, now()),
+    ('t17-x-before', 'invoice', 'X8', 'paid',     'paid', date '2026-12-31', date '2027-01-30', date '2027-01-10', 122000, 22000, '{}', cx, null, null, null),
     -- Y: A's referral ended 2026-12-31; Z: A's referral starts 2027-06-01; W: A and B
-    ('t17-y-paid',   'invoice', 'Y1', 'paid',     'Incassata', date '2027-02-10', date '2027-03-10', date '2027-03-01', 122000, 22000, '{}', cy, null, null, null),
-    ('t17-z-before', 'invoice', 'Z1', 'paid',     'Incassata', date '2027-05-31', date '2027-06-30', date '2027-06-05', 122000, 22000, '{}', cz, null, null, null),
-    ('t17-z-after',  'invoice', 'Z2', 'paid',     'Incassata', date '2027-06-01', date '2027-07-01', date '2027-06-10', 122000, 22000, '{}', cz, null, null, null),
-    ('t17-w-paid',   'invoice', 'W1', 'paid',     'Incassata', date '2027-02-20', date '2027-03-20', date '2027-03-05', 244000, 44000, '{}', cw, null, null, null),
+    ('t17-y-paid',   'invoice', 'Y1', 'paid',     'paid', date '2027-02-10', date '2027-03-10', date '2027-03-01', 122000, 22000, '{}', cy, null, null, null),
+    ('t17-z-before', 'invoice', 'Z1', 'paid',     'paid', date '2027-05-31', date '2027-06-30', date '2027-06-05', 122000, 22000, '{}', cz, null, null, null),
+    ('t17-z-after',  'invoice', 'Z2', 'paid',     'paid', date '2027-06-01', date '2027-07-01', date '2027-06-10', 122000, 22000, '{}', cz, null, null, null),
+    ('t17-w-paid',   'invoice', 'W1', 'paid',     'paid', date '2027-02-20', date '2027-03-20', date '2027-03-05', 244000, 44000, '{}', cw, null, null, null),
     -- no company at all
-    ('t17-nocomp',   'invoice', 'N1', 'paid',     'Incassata', date '2027-02-20', date '2027-03-20', date '2027-03-05', 122000, 22000, '{}', null, null, null, null);
+    ('t17-nocomp',   'invoice', 'N1', 'paid',     'paid', date '2027-02-20', date '2027-03-20', date '2027-03-05', 122000, 22000, '{}', null, null, null, null);
 
   -- structure: no amount in the answer; nothing changed on the tables
   select string_agg(a, ',' order by o) into cols from unnest((select proargnames from pg_proc where oid = 'public.partner_payments()'::regprocedure)) with ordinality t(a, o);
@@ -92,7 +92,7 @@ begin
   report := report || format(E'%s never: paid without date, unpaid, overdue, cancelled, credit note, removed in Qonto, before the referral started, after it ended, no company\n', case when ok then 'PASS' else 'FAIL' end);
   ok := (select count(*) from public.qonto_documents) = 0 and (select count(*) from public.referrals) = 0 and (select count(*) from public.invoice_status_v) = 0
         and (select count(*) from public.invoice_payments_v) = 0 and (select count(*) from public.case_payment_status_v) = 0 and (select count(*) from public.review_invoices_v) = 0;
-  begin insert into public.qonto_documents (qonto_id, kind, status_qonto, status, issue_date, total_cents, vat_cents, raw) values ('t17-hack', 'invoice', 'paid', 'Incassata', date '2027-01-01', 1, 0, '{}'); ok := false;
+  begin insert into public.qonto_documents (qonto_id, kind, status_qonto, status, issue_date, total_cents, vat_cents, raw) values ('t17-hack', 'invoice', 'paid', 'paid', date '2027-01-01', 1, 0, '{}'); ok := false;
   exception when insufficient_privilege then null; end;
   failures := failures + (not ok)::int;
   report := report || format(E'%s A reads nothing directly (documents, referrals, views: zero rows) and cannot write\n', case when ok then 'PASS' else 'FAIL' end);

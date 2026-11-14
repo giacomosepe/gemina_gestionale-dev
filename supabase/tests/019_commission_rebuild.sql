@@ -35,7 +35,7 @@ begin
 
   -- 1. paid invoice, one active referral (B ended before it): one line, 10% of the whole net amount, matured at creation
   insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, paid_at, total_cents, vat_cents, raw, company_id, case_id, case_link_source) values
-    ('t19-1', 'invoice', 'D1', 'paid', 'Incassata', date '2027-03-01', date '2027-03-31', date '2027-03-10', 122000, 22000, '{}', cx, prat_x, 'zite');
+    ('t19-1', 'invoice', 'D1', 'paid', 'paid', date '2027-03-01', date '2027-03-31', date '2027-03-10', 122000, 22000, '{}', cx, prat_x, 'zite');
   select id into d1 from public.qonto_documents where qonto_id = 't19-1';
   select count(*) into n from public.commissions where invoice_id = d1;
   ok := n = 1 and (select referral_id from public.commissions where invoice_id = d1) = r_a
@@ -47,7 +47,7 @@ begin
 
   -- 2. unpaid invoice in February: both referrals were active: two lines, not matured
   insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, total_cents, vat_cents, raw, company_id, case_id, case_link_source) values
-    ('t19-2', 'invoice', 'D2', 'unpaid', 'Emessa', date '2027-02-10', date '2027-03-10', 122000, 22000, '{}', cx, prat_x, 'zite');
+    ('t19-2', 'invoice', 'D2', 'unpaid', 'issued', date '2027-02-10', date '2027-03-10', 122000, 22000, '{}', cx, prat_x, 'zite');
   select id into d2 from public.qonto_documents where qonto_id = 't19-2';
   ok := (select count(*) from public.commissions where invoice_id = d2) = 2 and (select count(*) from public.commissions where invoice_id = d2 and matured_at is null) = 2
         and (select amount_cents from public.commissions where invoice_id = d2 and referral_id = r_b) = 5000;
@@ -58,7 +58,7 @@ begin
   perform private.sync_referrals(jsonb_build_array(
     jsonb_build_object('id', r_a, 'zite_segnalatore_id', 't19-a', 'zite_azienda_id', 't19-x', 'commission_pct', 20, 'starts_on', '2027-01-01', 'duration_years', null, 'ends_on', null, 'removed', false)));
   insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, total_cents, vat_cents, raw, company_id, case_id, case_link_source) values
-    ('t19-3', 'invoice', 'D3', 'unpaid', 'Emessa', date '2027-03-05', date '2027-04-05', 244000, 44000, '{}', cx, prat_x, 'zite');
+    ('t19-3', 'invoice', 'D3', 'unpaid', 'issued', date '2027-03-05', date '2027-04-05', 244000, 44000, '{}', cx, prat_x, 'zite');
   select id into d3 from public.qonto_documents where qonto_id = 't19-3';
   ok := (select pct from public.commissions where invoice_id = d1) = 10 and (select pct from public.commissions where invoice_id = d2 and referral_id = r_a) = 10
         and (select pct from public.commissions where invoice_id = d3) = 20 and (select amount_cents from public.commissions where invoice_id = d3) = 40000;
@@ -67,10 +67,10 @@ begin
 
   -- 4. credit note, cancelled invoice, invoice with no pratica, invoice with no company: no lines
   insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, paid_at, total_cents, vat_cents, raw, company_id, case_id, case_link_source) values
-    ('t19-cn', 'credit_note', 'N1', 'credit_note', 'Incassata', date '2027-03-06', date '2027-03-06', null, -12200, -2200, '{}', cx, prat_x, 'zite'),
-    ('t19-cx', 'invoice', 'C1', 'canceled', 'Annullata', date '2027-03-06', date '2027-04-06', null, 122000, 22000, '{}', cx, prat_x, 'zite'),
-    ('t19-np', 'invoice', 'P0', 'paid', 'Incassata', date '2027-03-06', date '2027-04-06', date '2027-03-07', 122000, 22000, '{}', cx, null, 'manual'),
-    ('t19-nc', 'invoice', 'K0', 'paid', 'Incassata', date '2027-03-06', date '2027-04-06', date '2027-03-07', 122000, 22000, '{}', null, null, 'manual');
+    ('t19-cn', 'credit_note', 'N1', 'credit_note', 'paid', date '2027-03-06', date '2027-03-06', null, -12200, -2200, '{}', cx, prat_x, 'zite'),
+    ('t19-cx', 'invoice', 'C1', 'canceled', 'cancelled', date '2027-03-06', date '2027-04-06', null, 122000, 22000, '{}', cx, prat_x, 'zite'),
+    ('t19-np', 'invoice', 'P0', 'paid', 'paid', date '2027-03-06', date '2027-04-06', date '2027-03-07', 122000, 22000, '{}', cx, null, 'manual'),
+    ('t19-nc', 'invoice', 'K0', 'paid', 'paid', date '2027-03-06', date '2027-04-06', date '2027-03-07', 122000, 22000, '{}', null, null, 'manual');
   select count(*) into n from public.commissions c join public.qonto_documents q on q.id = c.invoice_id where q.qonto_id in ('t19-cn', 't19-cx', 't19-np', 't19-nc');
   ok := n = 0;
   failures := failures + (not ok)::int;
@@ -85,11 +85,11 @@ begin
   report := report || format(E'%s running the whole rebuild again changes nothing (%s)\n', case when ok then 'PASS' else 'FAIL' end, res::text);
 
   -- 6. matured_at: set the first time the invoice is paid, never again
-  update public.qonto_documents set status = 'Incassata', paid_at = date '2027-03-20' where id = d3;
+  update public.qonto_documents set status = 'paid', paid_at = date '2027-03-20' where id = d3;
   select matured_at into ts from public.commissions where invoice_id = d3;
-  update public.qonto_documents set status = 'Emessa', paid_at = null where id = d3;
+  update public.qonto_documents set status = 'issued', paid_at = null where id = d3;
   perform pg_sleep(0.01);
-  update public.qonto_documents set status = 'Incassata', paid_at = date '2027-03-25' where id = d3;
+  update public.qonto_documents set status = 'paid', paid_at = date '2027-03-25' where id = d3;
   select matured_at into ts2 from public.commissions where invoice_id = d3;
   ok := ts is not null and ts = ts2 and ts > (select created_at from public.commissions where invoice_id = d3);
   failures := failures + (not ok)::int;
@@ -106,15 +106,15 @@ begin
   report := report || format(E'%s a corrected invoice amount moves the base and amount of free lines only; an invoiced line stays as it was\n', case when ok then 'PASS' else 'FAIL' end);
 
   -- 8. cancelling the invoice removes the free line and keeps the invoiced one
-  update public.qonto_documents set status = 'Annullata' where id = d2;
+  update public.qonto_documents set status = 'cancelled' where id = d2;
   ok := (select count(*) from public.commissions where invoice_id = d2) = 1 and (select referral_id from public.commissions where invoice_id = d2) = r_a;
   failures := failures + (not ok)::int;
   report := report || format(E'%s cancelling an invoice deletes its free lines and keeps the invoiced one\n', case when ok then 'PASS' else 'FAIL' end);
 
   -- 9. referral changes: a new referral creates lines on that company's invoices; ending or removing it deletes the free ones, keeps the received ones
   insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, total_cents, vat_cents, raw, company_id, case_id, case_link_source) values
-    ('t19-5', 'invoice', 'D5', 'unpaid', 'Emessa', date '2027-04-01', date '2027-05-01', 122000, 22000, '{}', cy, prat_y, 'zite'),
-    ('t19-5b', 'invoice', 'D5b', 'unpaid', 'Emessa', date '2027-04-02', date '2027-05-02', 122000, 22000, '{}', cy, prat_y, 'zite');
+    ('t19-5', 'invoice', 'D5', 'unpaid', 'issued', date '2027-04-01', date '2027-05-01', 122000, 22000, '{}', cy, prat_y, 'zite'),
+    ('t19-5b', 'invoice', 'D5b', 'unpaid', 'issued', date '2027-04-02', date '2027-05-02', 122000, 22000, '{}', cy, prat_y, 'zite');
   select id into d5 from public.qonto_documents where qonto_id = 't19-5';
   select count(*) into k from public.commissions where invoice_id in (select id from public.qonto_documents where qonto_id in ('t19-5', 't19-5b'));
   perform private.sync_referrals(jsonb_build_array(
@@ -131,7 +131,7 @@ begin
   perform private.sync_referrals(jsonb_build_array(
     jsonb_build_object('id', r_d, 'zite_segnalatore_id', 't19-b', 'zite_azienda_id', 't19-z', 'commission_pct', 150, 'starts_on', '2027-01-01', 'duration_years', null, 'ends_on', null, 'removed', false)));
   insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, total_cents, vat_cents, raw, company_id, case_id, case_link_source) values
-    ('t19-6', 'invoice', 'D6', 'unpaid', 'Emessa', date '2027-04-03', date '2027-05-03', 122000, 22000, '{}', cz, prat_z, 'zite');
+    ('t19-6', 'invoice', 'D6', 'unpaid', 'issued', date '2027-04-03', date '2027-05-03', 122000, 22000, '{}', cz, prat_z, 'zite');
   select id into d6 from public.qonto_documents where qonto_id = 't19-6';
   ok := d6 is not null and (select count(*) from public.commissions where invoice_id = d6) = 0
         and (select count(*) from public.commission_rebuild_errors where invoice_id = d6) >= 1

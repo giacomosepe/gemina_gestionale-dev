@@ -123,7 +123,7 @@ begin
   set local role authenticated;
   insert into public.messages (conversation_id, sender_id, body) values (conv, u_s2, 'risposta di Due');
   reset role;
-  select count(*) into n from public.notifications where conversation_id = conv and recipient_id = u_ref and link = 'messaggi';
+  select count(*) into n from public.notifications where conversation_id = conv and recipient_id = u_ref and link = 'messages';
   ok := n = 1; failures := failures + (not ok)::int;
   report := report || format(E'%s the referrer is notified of the reply, portal link (expect 1, got %s)\n', case when ok then 'PASS' else 'FAIL' end, n);
   select count(*) into n from public.conversation_members where conversation_id = conv and profile_id = u_s2;

@@ -33,10 +33,10 @@ begin
 
   -- two pratiche for X make the automatic rule ambiguous, so the invoices below stay unlinked
   insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, total_cents, vat_cents, raw, company_id) values
-    ('t22-1', 'invoice', 'L1', 'unpaid', 'Emessa', date '2027-02-01', date '2027-03-01', 122000, 22000, '{}', cx),
-    ('t22-nocomp', 'invoice', 'L2', 'unpaid', 'Emessa', date '2027-02-02', date '2027-03-02', 122000, 22000, '{}', null);
+    ('t22-1', 'invoice', 'L1', 'unpaid', 'issued', date '2027-02-01', date '2027-03-01', 122000, 22000, '{}', cx),
+    ('t22-nocomp', 'invoice', 'L2', 'unpaid', 'issued', date '2027-02-02', date '2027-03-02', 122000, 22000, '{}', null);
   insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, paid_at, total_cents, vat_cents, raw, company_id) values
-    ('t22-paid', 'invoice', 'L3', 'paid', 'Incassata', date '2027-02-03', date '2027-03-03', date '2027-02-20', 122000, 22000, '{}', cx);
+    ('t22-paid', 'invoice', 'L3', 'paid', 'paid', date '2027-02-03', date '2027-03-03', date '2027-02-20', 122000, 22000, '{}', cx);
   select id into d1 from public.qonto_documents where qonto_id = 't22-1';
   select id into d_nocomp from public.qonto_documents where qonto_id = 't22-nocomp';
   select id into d_paid from public.qonto_documents where qonto_id = 't22-paid';
@@ -69,7 +69,7 @@ begin
 
   -- 4. the line shows in commission_lines_v with the Zite ids and the pratica code
   select * into res from public.commission_lines_v where invoice_id = d1;
-  ok := res.zite_segnalatore_id = 't22-a' and res.zite_azienda_id = 't22-x' and res.case_code = 'T22-X1' and res.stage = 'Provvigioni teoriche'
+  ok := res.zite_segnalatore_id = 't22-a' and res.zite_azienda_id = 't22-x' and res.case_code = 'T22-X1' and res.stage = 'theoretical'
         and res.invoice_net_cents = 100000 and res.invoice_kind = 'invoice' and res.invoice_qonto_id = 't22-1';
   failures := failures + (not ok)::int;
   report := report || format(E'%s commission_lines_v: Zite ids of segnalatore and azienda, pratica code, stage, invoice net and Qonto id\n', case when ok then 'PASS' else 'FAIL' end);

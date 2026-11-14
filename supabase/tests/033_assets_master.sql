@@ -86,7 +86,7 @@ begin
   insert into public.assets (case_id) values (pr2) returning id into segn;
   insert into public.assets (case_id, name) values (pr2, 'Bene gestito') returning id into b_pr;
   update public.assets set zite_bene_id = id::text where id = b_pr;
-  perform private.sync_case_assets(pr2, jsonb_build_array(jsonb_build_object('id', b_pr::text, 'nome', 'Bene gestito', 'fornitore', null)));
+  perform private.sync_case_assets(pr2, jsonb_build_array(jsonb_build_object('id', b_pr::text, 'name', 'Bene gestito', 'supplier', null)));
   ok := (select removed_at is not null from public.assets where id = segn) and (select removed_at is null from public.assets where id = b_pr);
   failures := failures + (not ok)::int;
   report := report || format(E'%s the import keeps the managed bene and puts the placeholder aside\n', case when ok then 'PASS' else 'FAIL' end);

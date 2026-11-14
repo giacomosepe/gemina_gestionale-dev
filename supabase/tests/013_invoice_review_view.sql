@@ -24,13 +24,13 @@ begin
   report := report || format(E'%s the view is security_invoker\n', case when ok then 'PASS' else 'FAIL' end);
 
   insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, paid_at, total_cents, vat_cents, raw, removed_at) values
-    ('t13-no-due',    'invoice',     'T13-1', 'unpaid',      'Emessa',    date '2027-02-10', null,             null,             122000, 22000, '{}', null),
-    ('t13-ok-due',    'invoice',     'T13-2', 'unpaid',      'Emessa',    date '2027-02-11', date '2027-03-11', null,            122000, 22000, '{}', null),
-    ('t13-paid-nodt', 'invoice',     'T13-3', 'paid',        'Incassata', date '2027-02-12', date '2027-02-12', null,            122000, 22000, '{}', null),
-    ('t13-paid-ok',   'invoice',     'T13-4', 'paid',        'Incassata', date '2027-02-13', date '2027-02-13', date '2027-02-20', 122000, 22000, '{}', null),
-    ('t13-cn',        'credit_note', 'T13-NC', 'credit_note', 'Incassata', date '2027-02-14', date '2027-02-14', null,            -12200, -2200, '{}', null),
-    ('t13-cancel',    'invoice',     'T13-5', 'canceled',    'Annullata', date '2027-02-15', null,             null,             122000, 22000, '{}', null),
-    ('t13-removed',   'invoice',     'T13-6', 'unpaid',      'Emessa',    date '2027-02-16', null,             null,             122000, 22000, '{}', now());
+    ('t13-no-due',    'invoice',     'T13-1', 'unpaid',      'issued',    date '2027-02-10', null,             null,             122000, 22000, '{}', null),
+    ('t13-ok-due',    'invoice',     'T13-2', 'unpaid',      'issued',    date '2027-02-11', date '2027-03-11', null,            122000, 22000, '{}', null),
+    ('t13-paid-nodt', 'invoice',     'T13-3', 'paid',        'paid', date '2027-02-12', date '2027-02-12', null,            122000, 22000, '{}', null),
+    ('t13-paid-ok',   'invoice',     'T13-4', 'paid',        'paid', date '2027-02-13', date '2027-02-13', date '2027-02-20', 122000, 22000, '{}', null),
+    ('t13-cn',        'credit_note', 'T13-NC', 'credit_note', 'paid', date '2027-02-14', date '2027-02-14', null,            -12200, -2200, '{}', null),
+    ('t13-cancel',    'invoice',     'T13-5', 'canceled',    'cancelled', date '2027-02-15', null,             null,             122000, 22000, '{}', null),
+    ('t13-removed',   'invoice',     'T13-6', 'unpaid',      'issued',    date '2027-02-16', null,             null,             122000, 22000, '{}', now());
 
   perform set_config('request.jwt.claims', json_build_object('sub', u_s1, 'role', 'authenticated')::text, true);
   set local role authenticated;
