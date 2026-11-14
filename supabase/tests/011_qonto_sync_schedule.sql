@@ -64,7 +64,8 @@ begin
   failures := failures + (not ok)::int;
   report := report || format(E'%s the day summer time starts (02:00 does not exist): due from 03:00\n', case when ok then 'PASS' else 'FAIL' end);
 
-  -- the check: silence
+  -- the check: silence (own old run, so the test does not depend on real runs existing)
+  insert into public.qonto_sync_runs (started_at, finished_at) values (timestamptz '2026-12-30 03:00 UTC', timestamptz '2026-12-30 03:00:20 UTC');
   perform private.check_qonto_sync(timestamptz '2027-01-01 00:00 UTC');
   select count(*) into n from public.notifications where recipient_id = u_adm and event = 'qonto-sync';
   ok := n = 1 and not exists (select 1 from public.notifications where recipient_id = u_mgr and event = 'qonto-sync');

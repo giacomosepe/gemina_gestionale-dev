@@ -71,7 +71,10 @@ begin
   report := report || format(E'%s stages: unpaid invoice = teoriche, paid = maturate, partner invoice number = fatturate, paid_on = ricevute (wins over the rest), blank number does not count\n', case when ok then 'PASS' else 'FAIL' end);
 
   -- the invoice paying moves the stage with no change on the line
+  -- the rebuild trigger (20261023170220) would drop this hand-made line, because the made-up invoice has no pratica; pause it (DDL rolls back with the test)
+  alter table public.qonto_documents disable trigger qonto_documents_rebuild_commissions_upd;
   update public.qonto_documents set status = 'Incassata', paid_at = date '2027-03-09' where id = d_unpaid;
+  alter table public.qonto_documents enable trigger qonto_documents_rebuild_commissions_upd;
   ok := (select stage from public.commission_stages_v where invoice_id = d_unpaid) = 'Provvigioni maturate';
   failures := failures + (not ok)::int;
   report := report || format(E'%s a teoriche line becomes maturate by itself when its invoice is paid\n', case when ok then 'PASS' else 'FAIL' end);
