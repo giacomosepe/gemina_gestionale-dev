@@ -1,0 +1,7 @@
+{
+  "name": "geminup",
+  "private": true,
+  "scripts": {
+    "build": "npm ci --prefix web && npm run build --prefix web"
+  }
+}
