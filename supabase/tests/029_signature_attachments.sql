@@ -32,7 +32,7 @@ begin
   insert into public.partners (zite_segnalatore_id, name, email, organization_id) values ('t29-ref', 'Test referrer 29', 't29-ref@example.test', org) returning id into p_ref;
   insert into public.partner_members (partner_id, profile_id) values (p_ref, u_ref);
   insert into public.companies (name, zite_azienda_id, organization_id) values ('T29 A', 't29-a', org);
-  perform private.sync_pratiche(jsonb_build_array(
+  perform private.sync_cases(jsonb_build_array(
     jsonb_build_object('id', pr1, 'code', 'T29-1', 'zite_azienda_id', 't29-a', 'status', 'In lavorazione', 'is_open', true, 'total_fee_cents', 100000, 'removed', false),
     jsonb_build_object('id', pr2, 'code', 'T29-2', 'zite_azienda_id', 't29-a', 'status', 'In lavorazione', 'is_open', true, 'total_fee_cents', 100000, 'removed', false)));
 
@@ -40,22 +40,22 @@ begin
   perform set_config('request.jwt.claims', json_build_object('sub', u_s1, 'role', 'authenticated')::text, true);
   set local role authenticated;
 
-  insert into public.scadenze (pratica_id, tipo, numero, nome) values (pr1, 'dom', 1, 'Domanda') returning id into sc1;
-  insert into public.scadenze (pratica_id, tipo, numero, nome) values (pr1, 'int', 1, 'Rendicontazione 1') returning id into sc2;
-  insert into public.scadenze (pratica_id, tipo, numero, nome) values (pr2, 'dom', 1, 'Domanda') returning id into sc_other;
+  insert into public.deadlines (case_id, type, number, name) values (pr1, 'dom', 1, 'Domanda') returning id into sc1;
+  insert into public.deadlines (case_id, type, number, name) values (pr1, 'int', 1, 'Rendicontazione 1') returning id into sc2;
+  insert into public.deadlines (case_id, type, number, name) values (pr2, 'dom', 1, 'Domanda') returning id into sc_other;
 
   -- the folder of a scadenza
-  update public.scadenze set drive_folder = 'https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOp' where id = sc1;
+  update public.deadlines set drive_folder = 'https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOp' where id = sc1;
   begin
-    update public.scadenze set drive_folder = 'https://example.com/drive/folders/1AbCdEfGhIjKlMnOp' where id = sc2;
+    update public.deadlines set drive_folder = 'https://example.com/drive/folders/1AbCdEfGhIjKlMnOp' where id = sc2;
     ok := false;
   exception when check_violation then ok := true; end;
-  ok := ok and (select drive_folder from public.scadenze where id = sc1) is not null;
+  ok := ok and (select drive_folder from public.deadlines where id = sc1) is not null;
   failures := failures + (not ok)::int;
   report := report || format(E'%s a scadenza keeps a Drive folder link; anything else is refused\n', case when ok then 'PASS' else 'FAIL' end);
 
   -- a document to sign
-  insert into public.signature_attachments (pratica_id, scadenza_id, zite_dato_id, name, signatures_required, signers)
+  insert into public.signature_attachments (case_id, deadline_id, zite_dato_id, name, signatures_required, signers)
   values (pr1, sc1, 'dato-0001-questionario', '  Questionario PMS ', 2, array['cliente', 'gemina']) returning id into a1;
   select * into r from public.signature_attachments_v where id = a1;
   ok := r.name = 'Questionario PMS' and r.status = 'da_preparare' and r.signatures_done = 0 and r.created_by = u_s1 and r.last_event = 'created';
@@ -63,7 +63,7 @@ begin
   report := report || format(E'%s a new document: trimmed name, state da_preparare, author set, event created\n', case when ok then 'PASS' else 'FAIL' end);
 
   begin
-    insert into public.signature_attachments (pratica_id, scadenza_id, zite_dato_id, name, signatures_required, signers)
+    insert into public.signature_attachments (case_id, deadline_id, zite_dato_id, name, signatures_required, signers)
     values (pr1, sc_other, 'dato-0001-questionario', 'X', 1, array['cliente']);
     ok := false;
   exception when foreign_key_violation then ok := true; end;
@@ -71,7 +71,7 @@ begin
   report := report || format(E'%s a scadenza of another pratica is refused\n', case when ok then 'PASS' else 'FAIL' end);
 
   begin
-    insert into public.signature_attachments (pratica_id, scadenza_id, zite_dato_id, name, signatures_required, signers)
+    insert into public.signature_attachments (case_id, deadline_id, zite_dato_id, name, signatures_required, signers)
     values (pr1, sc1, 'dato-0001-questionario', 'Twice', 1, array['cliente']);
     ok := false;
   exception when unique_violation then ok := true; end;
@@ -79,19 +79,19 @@ begin
   report := report || format(E'%s one row per scadenza and voce\n', case when ok then 'PASS' else 'FAIL' end);
 
   begin
-    insert into public.signature_attachments (pratica_id, scadenza_id, zite_dato_id, name, signatures_required, signers)
+    insert into public.signature_attachments (case_id, deadline_id, zite_dato_id, name, signatures_required, signers)
     values (pr1, sc2, 'dato-0002-mandato', 'Mandato', 1, array['cliente', 'gemina']);
     ok := false;
   exception when check_violation then ok := true; end;
   begin
-    insert into public.signature_attachments (pratica_id, scadenza_id, zite_dato_id, name, signatures_required, signers)
+    insert into public.signature_attachments (case_id, deadline_id, zite_dato_id, name, signatures_required, signers)
     values (pr1, sc2, 'dato-0002-mandato', 'Mandato', 1, array['notaio']);
     ok := false;
   exception when check_violation then ok := ok; end;
   failures := failures + (not ok)::int;
   report := report || format(E'%s signers: only cliente / gemina, never more than the signatures required\n', case when ok then 'PASS' else 'FAIL' end);
 
-  insert into public.signature_attachments (pratica_id, scadenza_id, zite_dato_id, name, signatures_required, signers, sent_at, sent_by)
+  insert into public.signature_attachments (case_id, deadline_id, zite_dato_id, name, signatures_required, signers, sent_at, sent_by)
   values (pr1, sc2, 'dato-0002-mandato', 'Mandato', 1, array['cliente'], now(), u_s2) returning id into a2;
   ok := (select sent_at is null and sent_by is null from public.signature_attachments where id = a2);
   failures := failures + (not ok)::int;
@@ -208,7 +208,7 @@ begin
   select count(*) into n from public.signature_attachments_v;
   ok := n = 0 and (select count(*) from public.signature_events) = 0 and (select count(*) from public.signature_attachment_files) = 0;
   begin
-    insert into public.signature_attachments (pratica_id, scadenza_id, zite_dato_id, name, signatures_required, signers)
+    insert into public.signature_attachments (case_id, deadline_id, zite_dato_id, name, signatures_required, signers)
     values (pr1, sc2, 'dato-0003-altro', 'Altro', 1, array['cliente']);
     ok := false;
   -- a referrer cannot even see the scadenza, so the check on it refuses first

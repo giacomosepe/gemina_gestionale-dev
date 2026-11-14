@@ -6,10 +6,10 @@
 // refused with "staff_unknown" (the Gestionale creates it through the bridge and calls again).
 //
 // Actions:
-//   elenco  { zite_user_id, pratica_id, scadenza_id }                     -> { drive_folder, allegati: signature_attachments_v rows, files: [{attachment_id, drive_file_id, file_name}] }
-//   prepara { zite_user_id, pratica_id, scadenza_id, voci: [{zite_dato_id, name, signatures_required, signers}] }  (max 100)
+//   elenco  { zite_user_id, case_id, deadline_id }                     -> { drive_folder, allegati: signature_attachments_v rows, files: [{attachment_id, drive_file_id, file_name}] }
+//   prepara { zite_user_id, case_id, deadline_id, voci: [{zite_dato_id, name, signatures_required, signers}] }  (max 100)
 //           one row per voce (insert, or update name and signatures while nothing is sent or signed: the database keeps them frozen after) -> elenco
-//   cartella { zite_user_id, pratica_id, scadenza_id, drive_folder | null } -> elenco
+//   cartella { zite_user_id, case_id, deadline_id, drive_folder | null } -> elenco
 //   file    { zite_user_id, attachment_id, kind, file_name, drive_file_id, signatures, sha256, size_bytes, base64? }
 //           the copy goes to the private bucket "signature-files" at <organization>/<attachment>/<sha256>.<ext> (service role; checked: the sha256 is the
 //           bytes'), then the version row is written as the colleague. Without base64 (file too large to pass) the version is written with no copy.
@@ -103,21 +103,21 @@ async function comeCollega<T>(p: Record<string, unknown>, fn: (tx: postgres.Tran
 }
 
 async function leggiElenco(tx: postgres.TransactionSql, pratica: string, scadenza: string) {
-  const [s] = await tx`select id, drive_folder from public.scadenze where id = ${scadenza} and pratica_id = ${pratica}`;
+  const [s] = await tx`select id, drive_folder from public.deadlines where id = ${scadenza} and case_id = ${pratica}`;
   if (!s) throw new AllegatiError(404, "scadenza_not_found");
-  const allegati = await tx`select * from public.signature_attachments_v where scadenza_id = ${scadenza} order by name`;
+  const allegati = await tx`select * from public.signature_attachments_v where deadline_id = ${scadenza} order by name`;
   const files = await tx`select f.attachment_id, f.drive_file_id, f.file_name from public.signature_attachment_files f
-                          join public.signature_attachments a on a.id = f.attachment_id where a.scadenza_id = ${scadenza}`;
+                          join public.signature_attachments a on a.id = f.attachment_id where a.deadline_id = ${scadenza}`;
   return { drive_folder: s.drive_folder, allegati, files };
 }
 
 async function elenco(p: Record<string, unknown>) {
-  const pratica = oneUuid(p.pratica_id, "pratica_id"), scadenza = oneUuid(p.scadenza_id, "scadenza_id");
+  const pratica = oneUuid(p.case_id, "case_id"), scadenza = oneUuid(p.deadline_id, "deadline_id");
   return await comeCollega(p, (tx) => leggiElenco(tx, pratica, scadenza));
 }
 
 async function prepara(p: Record<string, unknown>) {
-  const pratica = oneUuid(p.pratica_id, "pratica_id"), scadenza = oneUuid(p.scadenza_id, "scadenza_id");
+  const pratica = oneUuid(p.case_id, "case_id"), scadenza = oneUuid(p.deadline_id, "deadline_id");
   if (!Array.isArray(p.voci) || p.voci.length > 100) throw new AllegatiError(400, "invalid_voci");
   const voci = p.voci.map((raw) => {
     const v = (raw ?? {}) as Record<string, unknown>;
@@ -128,9 +128,9 @@ async function prepara(p: Record<string, unknown>) {
   });
   return await comeCollega(p, async (tx) => {
     for (const v of voci) {
-      await tx`insert into public.signature_attachments (pratica_id, scadenza_id, zite_dato_id, name, signatures_required, signers)
+      await tx`insert into public.signature_attachments (case_id, deadline_id, zite_dato_id, name, signatures_required, signers)
                values (${pratica}, ${scadenza}, ${v.zite_dato_id}, ${v.name}, ${v.signatures_required}, ${v.signers}::text[])
-               on conflict (scadenza_id, zite_dato_id) do update
+               on conflict (deadline_id, zite_dato_id) do update
                  set name = excluded.name, signatures_required = excluded.signatures_required, signers = excluded.signers
                  where (public.signature_attachments.name, public.signature_attachments.signatures_required, public.signature_attachments.signers)
                        is distinct from (excluded.name, excluded.signatures_required, excluded.signers)`;
@@ -140,10 +140,10 @@ async function prepara(p: Record<string, unknown>) {
 }
 
 async function cartella(p: Record<string, unknown>) {
-  const pratica = oneUuid(p.pratica_id, "pratica_id"), scadenza = oneUuid(p.scadenza_id, "scadenza_id");
+  const pratica = oneUuid(p.case_id, "case_id"), scadenza = oneUuid(p.deadline_id, "deadline_id");
   const link = p.drive_folder == null ? null : text(p.drive_folder, "drive_folder", 300);
   return await comeCollega(p, async (tx) => {
-    const r = await tx`update public.scadenze set drive_folder = ${link} where id = ${scadenza} and pratica_id = ${pratica} returning id`;
+    const r = await tx`update public.deadlines set drive_folder = ${link} where id = ${scadenza} and case_id = ${pratica} returning id`;
     if (!r.length) throw new AllegatiError(404, "scadenza_not_found");
     return await leggiElenco(tx, pratica, scadenza);
   });

@@ -108,7 +108,7 @@ begin
 
   perform set_config('request.jwt.claims', json_build_object('sub', u_s1, 'role', 'authenticated')::text, true);
   set local role authenticated;
-  insert into public.reminders (zite_pratica_id, date_key, label, pratica_title, due_date, days_before, recipients)
+  insert into public.reminders (zite_pratica_id, date_key, label, case_title, due_date, days_before, recipients)
     values ('t8-pratica', 'scadenza', 'Invio domanda', 'Pratica di prova', today + 7, array[1, 7, 7], array['t8-zite-s1', 't8-zite-s2', 't8-zite-s1'])
     returning id into rem;
   insert into public.reminders (zite_pratica_id, date_key, label, due_date, days_before, recipients)

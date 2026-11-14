@@ -106,7 +106,7 @@ begin
   ---------------------------------------------------------------- reminders of a trattativa
   perform set_config('request.jwt.claims', json_build_object('sub', u_s1, 'role', 'authenticated')::text, true);
   set local role authenticated;
-  insert into public.reminders (zite_trattativa_id, date_key, label, pratica_title, due_date, days_before, recipients)
+  insert into public.reminders (zite_trattativa_id, date_key, label, case_title, due_date, days_before, recipients)
     values ('t9-trattativa', 'chiusura', 'Chiusura prevista', 'Trattativa di prova', today + 7, array[7], array['t9-zite-s1']);
   begin
     insert into public.reminders (zite_trattativa_id, date_key, label, due_date, days_before, recipients)

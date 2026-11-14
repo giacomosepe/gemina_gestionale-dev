@@ -5,21 +5,21 @@
 //
 // Actions:
 //   gia_importati { drive_ids: string[] }  -> { ids }   which Drive files are already imported (max 5000)
-//   importa { pratica_id, beni: [{id, nome, fornitore}], fatture: [ invoice as read by the Gestionale + xml_base64 ] }  (max 25 per call)
+//   importa { case_id, beni: [{id, nome, fornitore}], fatture: [ invoice as read by the Gestionale + xml_base64 ] }  (max 25 per call)
 //     1. a copy of each original XML (or .p7m) goes to the private bucket "supplier-invoices" at <organization_id>/<sha256>.<ext>
-//     2. private.import_pratica_invoices writes invoices, lines, the goods of the pratica and the proposed goods
+//     2. private.import_case_invoices writes invoices, lines, the goods of the pratica and the proposed goods
 // The XML is never parsed here: the Gestionale parses it (safely) and sends the result; here only the copy is stored.
 //
 // v2 (2026-11-04): the «Fatture fornitori» screen. These actions act AS the colleague logged in to Zite (zite_user_id, taken by the
 // Gestionale's server from context.user): they run as role authenticated with that staff profile, so RLS applies and the database records
 // who assigned. A Zite user without a current staff profile is refused with "staff_unknown" (the Gestionale creates it through the bridge).
-//   pagina   { zite_user_id, pratica_id, offset?, limit? }          -> public.supplier_invoices_page
+//   pagina   { zite_user_id, case_id, offset?, limit? }          -> public.supplier_invoices_page
 //   righe    { zite_user_id, invoice_ids }                           -> public.supplier_invoice_lines_json (max 200 invoices)
-//   assegna  { zite_user_id, pratica_id, invoice_ids, line_ids, shares } -> public.set_supplier_allocation
-//   elimina  { zite_user_id, pratica_id, invoice_ids }               -> public.delete_supplier_invoices
+//   assegna  { zite_user_id, case_id, invoice_ids, line_ids, shares } -> public.set_supplier_allocation
+//   elimina  { zite_user_id, case_id, invoice_ids }               -> public.delete_supplier_invoices
 //   categoria { zite_user_id, supplier_ids, category_id }            -> public.set_supplier_category
-//   riepilogo { zite_user_id, pratica_id, filtri? }                  -> public.supplier_invoices_summary (v4: per bene, fornitore, categoria)
-//   nota_credito { zite_user_id, pratica_id, invoice_ids, inclusa }  -> public.set_credit_notes_included (v5: una nota di credito conta nei totali solo se inclusa)
+//   riepilogo { zite_user_id, case_id, filtri? }                  -> public.supplier_invoices_summary (v4: per bene, fornitore, categoria)
+//   nota_credito { zite_user_id, case_id, invoice_ids, inclusa }  -> public.set_credit_notes_included (v5: una nota di credito conta nei totali solo se inclusa)
 
 import postgres from "npm:postgres@3.4.5";
 import { createClient } from "npm:@supabase/supabase-js@2.50.0";
@@ -93,10 +93,10 @@ async function salvaCopia(org: string, f: Record<string, unknown>): Promise<stri
 }
 
 async function importa(p: Record<string, unknown>) {
-  if (typeof p.pratica_id !== "string" || !UUID.test(p.pratica_id)) throw new ImportError(400, "invalid_pratica_id");
+  if (typeof p.case_id !== "string" || !UUID.test(p.case_id)) throw new ImportError(400, "invalid_pratica_id");
   if (!Array.isArray(p.beni) || p.beni.length > 100) throw new ImportError(400, "invalid_beni");
   if (!Array.isArray(p.fatture) || p.fatture.length === 0 || p.fatture.length > MAX_FATTURE) throw new ImportError(400, "invalid_fatture");
-  const [prat] = await sql`select organization_id from public.pratiche where id = ${p.pratica_id} and removed_at is null`;
+  const [prat] = await sql`select organization_id from public.cases where id = ${p.case_id} and removed_at is null`;
   if (!prat) throw new ImportError(404, "pratica_not_found");
 
   const fatture: Record<string, unknown>[] = [];
@@ -109,7 +109,7 @@ async function importa(p: Record<string, unknown>) {
     fatture.push({ ...resto, xml_path });
   }
   const batch = { source: typeof p.source === "string" ? p.source.slice(0, 200) : "drive", invoices: fatture };
-  const [r] = await sql`select private.import_pratica_invoices(${p.pratica_id}::uuid, ${JSON.stringify(p.beni)}::text::jsonb,
+  const [r] = await sql`select private.import_case_invoices(${p.case_id}::uuid, ${JSON.stringify(p.beni)}::text::jsonb,
                                                              ${JSON.stringify(batch)}::text::jsonb) as result`;
   return r.result;
 }
@@ -146,7 +146,7 @@ async function comeCollega<T>(p: Record<string, unknown>, fn: (tx: postgres.Tran
 }
 
 async function pagina(p: Record<string, unknown>) {
-  const pratica = oneUuid(p.pratica_id, "pratica_id");
+  const pratica = oneUuid(p.case_id, "case_id");
   const offset = Number.isSafeInteger(p.offset) ? Number(p.offset) : 0;
   const limit = Number.isSafeInteger(p.limit) ? Number(p.limit) : 50;
   const filtri = soloFiltri(p.filtri);
@@ -180,7 +180,7 @@ async function righe(p: Record<string, unknown>) {
 }
 
 async function assegna(p: Record<string, unknown>) {
-  const pratica = oneUuid(p.pratica_id, "pratica_id");
+  const pratica = oneUuid(p.case_id, "case_id");
   const inv = uuids(p.invoice_ids, "invoice_ids", 2000);
   const lines = uuids(p.line_ids, "line_ids", 5000);
   if (!Array.isArray(p.shares) || p.shares.length > 50) throw new ImportError(400, "invalid_shares");
@@ -188,7 +188,7 @@ async function assegna(p: Record<string, unknown>) {
     const s = x as Record<string, unknown>;
     if (typeof s?.pct !== "number" || !(s.pct > 0) || s.pct > 100) throw new ImportError(400, "invalid_shares");
     if (s.not_applicable === true) return { not_applicable: true, pct: s.pct };
-    return { bene_id: oneUuid(s.bene_id, "bene_id"), pct: s.pct };
+    return { asset_id: oneUuid(s.asset_id, "asset_id"), pct: s.pct };
   });
   return await comeCollega(p, async (tx) => {
     const [r] = await tx`select public.set_supplier_allocation(${pratica}::uuid, ${inv}::uuid[], ${lines}::uuid[], ${JSON.stringify(shares)}::text::jsonb) as n`;
@@ -197,7 +197,7 @@ async function assegna(p: Record<string, unknown>) {
 }
 
 async function elimina(p: Record<string, unknown>) {
-  const pratica = oneUuid(p.pratica_id, "pratica_id");
+  const pratica = oneUuid(p.case_id, "case_id");
   const inv = uuids(p.invoice_ids, "invoice_ids", 2000);
   return await comeCollega(p, async (tx) => {
     const [r] = await tx`select public.delete_supplier_invoices(${pratica}::uuid, ${inv}::uuid[]) as n`;
@@ -216,7 +216,7 @@ async function categoria(p: Record<string, unknown>) {
 
 // v4: the summaries per bene / fornitore / categoria, on the invoices that pass the same filters as the list.
 async function riepilogo(p: Record<string, unknown>) {
-  const pratica = oneUuid(p.pratica_id, "pratica_id");
+  const pratica = oneUuid(p.case_id, "case_id");
   const filtri = soloFiltri(p.filtri);
   return await comeCollega(p, async (tx) => {
     const [r] = await tx`select public.supplier_invoices_summary(${pratica}::uuid, ${JSON.stringify(filtri)}::jsonb) as data`;
@@ -226,7 +226,7 @@ async function riepilogo(p: Record<string, unknown>) {
 
 // v5: a credit note stays out of the totals until someone includes it (clients rarely mean to send them).
 async function notaCredito(p: Record<string, unknown>) {
-  const pratica = oneUuid(p.pratica_id, "pratica_id");
+  const pratica = oneUuid(p.case_id, "case_id");
   const inv = uuids(p.invoice_ids, "invoice_ids", 2000);
   if (typeof p.inclusa !== "boolean") throw new ImportError(400, "invalid_inclusa");
   return await comeCollega(p, async (tx) => {

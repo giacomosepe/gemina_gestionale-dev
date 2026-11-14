@@ -100,11 +100,11 @@ begin
             jsonb_build_object('client', jsonb_build_object('id', 'qc-u', 'name', 'Upsilon', 'vat_number', 'IT90000000101')), 'qc-u', c_u0) returning id into du;
 
   -- the trigger path needs a pratica and a referral for company Tau
-  perform private.sync_pratiche(jsonb_build_array(
+  perform private.sync_cases(jsonb_build_array(
     jsonb_build_object('id', p_t, 'code', 'T28-T', 'zite_azienda_id', 't28-t', 'status', 'In lavorazione', 'is_open', true, 'total_fee_cents', 500000, 'removed', false)));
   perform private.sync_referrals(jsonb_build_array(
     jsonb_build_object('id', rf, 'zite_segnalatore_id', 't28-a', 'zite_azienda_id', 't28-t', 'commission_pct', 10, 'starts_on', '2027-01-01', 'duration_years', null, 'ends_on', null, 'removed', false)));
-  ok := not exists (select 1 from public.commissions where invoice_id = dt) and (select company_id is null and pratica_id is null from public.qonto_documents where id = dt);
+  ok := not exists (select 1 from public.commissions where invoice_id = dt) and (select company_id is null and case_id is null from public.qonto_documents where id = dt);
   failures := failures + (not ok)::int;
   report := report || format(E'%s before the matching: all the test invoices have no company; the invoice of Tau has no commission line\n', case when ok then 'PASS' else 'FAIL' end);
 
@@ -130,7 +130,7 @@ begin
   report := report || format(E'%s not linked, nothing changed: two companies with the same key, no VAT on the Qonto client, a VAT nobody has, a company with another Qonto id (not overwritten), FR90000000088 vs 90000000088 (prefix kept)\n', case when ok then 'PASS' else 'FAIL' end);
 
   -- trigger path: the pratica of the company and the commission line of the referral follow from the existing triggers
-  ok := (select pratica_id = p_t from public.qonto_documents where id = dt)
+  ok := (select case_id = p_t from public.qonto_documents where id = dt)
         and (select count(*) from public.commissions where invoice_id = dt and referral_id = rf and amount_cents = 10000) = 1;
   failures := failures + (not ok)::int;
   report := report || format(E'%s after the link the invoice gets the pratica of its company and the commission line of the referral (existing triggers)\n', case when ok then 'PASS' else 'FAIL' end);

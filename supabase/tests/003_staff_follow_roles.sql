@@ -68,7 +68,7 @@ begin
   -- a comment written while still in the team, by the person who will leave
   perform set_config('request.jwt.claims', json_build_object('sub', u_old, 'role', 'authenticated')::text, true);
   set local role authenticated;
-  insert into public.comments (record_type, record_zite_id, body) values ('pratica', 'zite-t3', 'written before leaving') returning id into c_old;
+  insert into public.comments (record_type, record_zite_id, body) values ('case', 'zite-t3', 'written before leaving') returning id into c_old;
   reset role;
 
   -- leaving the team, as the bridge does in staffLeave
@@ -102,7 +102,7 @@ begin
   -- a colleague replies to that old comment: the person who left is not notified
   perform set_config('request.jwt.claims', json_build_object('sub', u_s1, 'role', 'authenticated')::text, true);
   set local role authenticated;
-  insert into public.comments (record_type, record_zite_id, parent_id, body) values ('pratica', 'zite-t3', c_old, 'reply');
+  insert into public.comments (record_type, record_zite_id, parent_id, body) values ('case', 'zite-t3', c_old, 'reply');
   reset role;
   select count(*) into n from public.notifications where recipient_id = u_old and kind = 'comment_reply';
   ok := n = 0; failures := failures + (not ok)::int;

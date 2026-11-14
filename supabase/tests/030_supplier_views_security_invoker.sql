@@ -15,19 +15,19 @@ begin
   -- every view of the public schema that is not security_invoker would bypass RLS: the two of this migration must not be among them
   ok := not exists (select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
                      where n.nspname = 'public' and c.relkind = 'v'
-                       and c.relname in ('supplier_invoice_lines_status', 'supplier_invoice_by_bene')
+                       and c.relname in ('supplier_invoice_lines_status', 'supplier_invoice_by_asset')
                        and not coalesce('security_invoker=true' = any(c.reloptions), false));
   failures := failures + (not ok)::int;
   report := report || format(E'%s both supplier views are security_invoker\n', case when ok then 'PASS' else 'FAIL' end);
 
   select count(*) into tot1 from public.supplier_invoice_lines_status;
-  select count(*) into tot2 from public.supplier_invoice_by_bene;
+  select count(*) into tot2 from public.supplier_invoice_by_asset;
 
   if staff is not null then
     perform set_config('request.jwt.claims', json_build_object('sub', staff, 'role', 'authenticated')::text, true);
     set local role authenticated;
     select count(*) into n1 from public.supplier_invoice_lines_status;
-    select count(*) into n2 from public.supplier_invoice_by_bene;
+    select count(*) into n2 from public.supplier_invoice_by_asset;
     reset role;
     ok := n1 = tot1 and n2 = tot2;
   else ok := true; end if;
@@ -41,7 +41,7 @@ begin
   perform set_config('request.jwt.claims', json_build_object('sub', u_ref, 'role', 'authenticated')::text, true);
   set local role authenticated;
   begin select count(*) into n1 from public.supplier_invoice_lines_status; exception when insufficient_privilege then n1 := 0; end;
-  begin select count(*) into n2 from public.supplier_invoice_by_bene; exception when insufficient_privilege then n2 := 0; end;
+  begin select count(*) into n2 from public.supplier_invoice_by_asset; exception when insufficient_privilege then n2 := 0; end;
   reset role;
   ok := n1 = 0 and n2 = 0;
   failures := failures + (not ok)::int;
