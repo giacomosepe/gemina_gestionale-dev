@@ -7,10 +7,17 @@ set -u
 : "${PGURL:?set PGURL}"
 dir="$(cd "$(dirname "$0")/../tests" && pwd)"
 pattern="${1:-0*.sql}"
+seed="$dir/_seed_staff.sql"
+needs_staff=" 020 021 024 035 "   # tests that expect one admin and two managers to exist
 failed=0; total=0
 for f in "$dir"/$pattern; do
   total=$((total + 1))
-  out="$(psql "$PGURL" -v ON_ERROR_STOP=0 -X -q -f "$f" 2>&1)"
+  num="$(basename "$f" | cut -c1-3)"
+  if [[ "$needs_staff" == *" $num "* ]]; then
+    out="$(psql "$PGURL" -1 -v ON_ERROR_STOP=0 -X -q -f "$seed" -f "$f" 2>&1)"
+  else
+    out="$(psql "$PGURL" -v ON_ERROR_STOP=0 -X -q -f "$f" 2>&1)"
+  fi
   if grep -q "TEST REPORT" <<<"$out"; then
     n="$(grep -oE 'FAILURES: [0-9]+' <<<"$out" | tail -1 | grep -oE '[0-9]+')"
     [ -z "$n" ] && n="$(grep -oE '[0-9]+ failure\(s\)' <<<"$out" | head -1 | grep -oE '^[0-9]+')"
