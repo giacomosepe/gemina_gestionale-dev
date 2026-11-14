@@ -22,6 +22,7 @@ export function supabaseDeps(env = Deno.env): Deps<Tx> {
   const sql = postgres(env.get("SUPABASE_DB_URL") ?? "", { prepare: false, max: 4, idle_timeout: 20 });
 
   return {
+    ...databaseDeps(sql),
     allowedOrigins: (env.get("ALLOWED_ORIGINS") ?? "").split(",").map((o) => o.trim()).filter(Boolean),
     newId: () => crypto.randomUUID(),
     now: () => Date.now(),
@@ -38,7 +39,12 @@ export function supabaseDeps(env = Deno.env): Deps<Tx> {
       if (typeof u?.id !== "string") throw new AppError("unauthorized");
       return { id: u.id, email: typeof u.email === "string" ? u.email : null };
     },
+  };
+}
 
+/** The database half of the router's Deps: run as the user, read the identity, check a permission. Also used by the integration tests. */
+export function databaseDeps(sql: postgres.Sql): Pick<Deps<Tx>, "runAsUser" | "loadIdentity" | "hasPermission"> {
+  return {
     runAsUser: (user, fn) => runAsUserOn(sql, user, fn),
 
     async loadIdentity(tx) {

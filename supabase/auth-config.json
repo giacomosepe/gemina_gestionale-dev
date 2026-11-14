@@ -1,0 +1,6 @@
+{
+  "disable_signup": true,
+  "external_email_enabled": true,
+  "mailer_autoconfirm": false,
+  "external_google_enabled": false
+}

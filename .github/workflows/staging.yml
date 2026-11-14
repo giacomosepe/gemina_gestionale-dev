@@ -13,6 +13,10 @@ on:
         description: "Deploy the Edge Functions (supabase/functions) to staging"
         type: boolean
         default: false
+      apply_auth_config:
+        description: "Apply the Auth settings of supabase/auth-config.json (sign-ups off, email link, Google when its secrets exist)"
+        type: boolean
+        default: false
       generate_types:
         description: "Regenerate supabase/functions/_shared/database.types.ts from staging and commit it to the branch"
         type: boolean
@@ -45,6 +49,13 @@ jobs:
       - name: Deploy Edge Functions
         if: ${{ inputs.deploy_functions }}
         run: supabase functions deploy --project-ref "$PROJECT_REF" --use-api --no-verify-jwt --yes
+      - name: Apply Auth settings
+        if: ${{ inputs.apply_auth_config }}
+        env:
+          APP_URL: ${{ vars.APP_URL }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+        run: supabase/scripts/apply_auth_config.sh
       - name: Generate database types
         if: ${{ inputs.generate_types }}
         run: |
@@ -73,4 +84,4 @@ jobs:
           url="$(cat supabase/.temp/pooler-url)"
           case "$url" in *sslmode=*) ;; *\?*) url="$url&sslmode=require" ;; *) url="$url?sslmode=require" ;; esac
           export TEST_DB_URL="$url"
-          deno test --node-modules-dir=none --allow-net --allow-env supabase/functions/_shared/data_integration_test.ts
+          deno test --node-modules-dir=none --allow-net --allow-env supabase/functions/_shared/*_integration_test.ts
