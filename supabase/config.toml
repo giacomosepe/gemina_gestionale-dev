@@ -39,3 +39,6 @@ verify_jwt = false
 
 [functions.jobs]
 verify_jwt = false
+
+[functions.ping]
+verify_jwt = false
