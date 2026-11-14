@@ -32,7 +32,7 @@ begin
   update public.profiles set role = 'staff', staff_role = 'admin', organization_id = org_a, zite_user_id = 'iso-a' where id = ua;
   update public.profiles set role = 'staff', staff_role = 'admin', organization_id = org_b, zite_user_id = 'iso-b' where id = ub;
   perform set_config('gemina.staff_role_change', 'off', true);
-  insert into public.companies (id, name, organization_id) values (co_a, 'Company A', org_a), (co_b, 'Company B', org_b);
+  insert into public.companies (id, name, zite_azienda_id, organization_id) values (co_a, 'Company A', 'iso-co-a', org_a), (co_b, 'Company B', 'iso-co-b', org_b);
 
   perform set_config('request.jwt.claims', json_build_object('sub', ub, 'role', 'authenticated')::text, true);
   set local role authenticated;
@@ -58,12 +58,12 @@ begin
   else report := report || E'\nok   staff B cannot update a company of A'; end if;
 
   begin
-    insert into public.companies (name, organization_id) values ('Intruder', org_a);
+    insert into public.companies (name, zite_azienda_id, organization_id) values ('Intruder', 'iso-x', org_a);
     failures := failures + 1; report := report || E'\nFAIL staff B inserted a company into A';
   exception when others then report := report || E'\nok   staff B cannot insert into A'; end;
 
   begin
-    insert into public.companies (name) values ('Default org');
+    insert into public.companies (name, zite_azienda_id) values ('Default org', 'iso-d');
     if not exists (select 1 from public.companies where name = 'Default org' and organization_id = org_b) then
       failures := failures + 1; report := report || E'\nFAIL the default organization is not the one of the user';
     else report := report || E'\nok   a new row takes the organization of the user'; end if;

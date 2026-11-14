@@ -71,7 +71,7 @@ begin
   report := report || format(E'%s the function returns number, company, pratica code, payment date and no amount (%s); authenticated may call it, anonymous not\n', case when ok then 'PASS' else 'FAIL' end, cols);
   ok := not has_table_privilege('authenticated', 'public.qonto_documents', 'insert') and not has_table_privilege('authenticated', 'public.qonto_documents', 'update')
         and not has_table_privilege('anon', 'public.qonto_documents', 'select') and not has_table_privilege('authenticated', 'public.referrals', 'insert')
-        and (select count(*) from pg_policies where tablename = 'qonto_documents') = 1;
+        and (select count(*) from pg_policies where tablename = 'qonto_documents' and permissive = 'PERMISSIVE') = 1;
   failures := failures + (not ok)::int;
   report := report || format(E'%s qonto_documents and referrals are untouched: no write for signed-in users, no anonymous read, still one staff-only policy\n', case when ok then 'PASS' else 'FAIL' end);
 
