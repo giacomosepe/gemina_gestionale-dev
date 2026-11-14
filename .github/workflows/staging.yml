@@ -63,3 +63,14 @@ jobs:
           if [ ! -f supabase/.temp/pooler-url ]; then echo "pooler-url missing after link:"; ls -a supabase/.temp; exit 1; fi
           export PGURL="$(cat supabase/.temp/pooler-url)"
           supabase/scripts/run_tests.sh
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Data layer integration test (Deno, real database)
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          url="$(cat supabase/.temp/pooler-url)"
+          case "$url" in *sslmode=*) ;; *\?*) url="$url&sslmode=require" ;; *) url="$url?sslmode=require" ;; esac
+          export TEST_DB_URL="$url"
+          deno test --node-modules-dir=none --allow-net --allow-env supabase/functions/_shared/data_integration_test.ts

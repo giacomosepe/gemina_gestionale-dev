@@ -1,9 +1,20 @@
 // The real `Deps` of the router: Supabase Auth to check the session, a direct database connection to run as the user.
 import postgres from "npm:postgres@3.4.5";
+import { asUser, type DB, makeDb } from "./data.ts";
 import { AppError } from "./errors.ts";
 import type { AuthUser, Deps } from "./router.ts";
+import type { Kysely } from "npm:kysely@0.27.6";
 
-export type Tx = postgres.TransactionSql;
+/** What a handler gets as ctx.tx: the typed query builder and raw SQL, both on the request's transaction (as the signed-in user). */
+export type Tx = { db: Kysely<DB>; sql: postgres.TransactionSql };
+
+/** One transaction as the signed-in user; everything inside commits or rolls back together. */
+export function runAsUserOn<T>(sql: postgres.Sql, user: AuthUser, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  return sql.begin(async (t) => {
+    await asUser(t, user);
+    return await fn({ sql: t, db: makeDb(t) });
+  }) as Promise<T>;
+}
 
 export function supabaseDeps(env = Deno.env): Deps<Tx> {
   const url = (env.get("SUPABASE_URL") ?? "").replace(/\/+$/, "");
@@ -28,22 +39,16 @@ export function supabaseDeps(env = Deno.env): Deps<Tx> {
       return { id: u.id, email: typeof u.email === "string" ? u.email : null };
     },
 
-    // One transaction as the signed-in user: role `authenticated` and the claims row-level security reads. Everything inside rolls back together.
-    runAsUser: (user, fn) =>
-      sql.begin(async (tx) => {
-        await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: user.id, role: "authenticated", email: user.email })}, true)`;
-        await tx`set local role authenticated`;
-        return await fn(tx);
-      }) as Promise<never>,
+    runAsUser: (user, fn) => runAsUserOn(sql, user, fn),
 
     async loadIdentity(tx) {
-      const [r] = await tx`select private.current_organization_id() as organization_id,
+      const [r] = await tx.sql`select private.current_organization_id() as organization_id,
                                   (select p.staff_role::text from public.profiles p where p.id = (select auth.uid()) and p.role = 'staff') as staff_role`;
       return { organizationId: r?.organization_id ?? null, staffRole: r?.staff_role ?? null };
     },
 
     async hasPermission(tx, permission) {
-      const [r] = await tx`select private.has_permission(${permission}) as ok`;
+      const [r] = await tx.sql`select private.has_permission(${permission}) as ok`;
       return r?.ok === true;
     },
   };
