@@ -9,6 +9,10 @@ on:
         description: "Apply pending migrations before the tests"
         type: boolean
         default: true
+      deploy_functions:
+        description: "Deploy the Edge Functions (supabase/functions) to staging"
+        type: boolean
+        default: false
 
 concurrency: staging
 
@@ -32,6 +36,9 @@ jobs:
       - name: Apply migrations
         if: ${{ inputs.push_migrations }}
         run: supabase db push --remote --include-all --yes
+      - name: Deploy Edge Functions
+        if: ${{ inputs.deploy_functions }}
+        run: supabase functions deploy --project-ref "$PROJECT_REF" --use-api --no-verify-jwt --yes
       - name: Run database tests
         env:
           PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}

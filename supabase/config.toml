@@ -4,3 +4,35 @@ project_id = "geminup"
 
 [db]
 major_version = 17
+
+# Every function checks its own secret or signature (bridge secret, sync secret, Svix), so the platform JWT check is off.
+[functions.allegati-firma]
+verify_jwt = false
+
+[functions.aziende-sync]
+verify_jwt = false
+
+[functions.beni]
+verify_jwt = false
+
+[functions.fatture-import]
+verify_jwt = false
+
+[functions.message-emails]
+verify_jwt = false
+
+[functions.portal-bridge]
+verify_jwt = false
+
+[functions.portale-fatture]
+verify_jwt = false
+
+[functions.qonto-sync]
+verify_jwt = false
+
+[functions.resend-webhook]
+verify_jwt = false
+
+[functions.segnalatori]
+verify_jwt = false
+
