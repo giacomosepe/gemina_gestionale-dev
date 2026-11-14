@@ -265,7 +265,7 @@ async function reminderEmails(): Promise<number> {
       select n.id
         from public.notifications n
         join public.profiles r on r.id = n.recipient_id and r.role = 'staff'
-       where n.kind = 'event' and n.event = 'promemoria' and n.event_key like 'rem:%' and n.emailed_at is null
+       where n.kind = 'event' and n.event = 'reminders' and n.event_key like 'rem:%' and n.emailed_at is null
          and n.created_at > now() - interval '1 day'
        for update of n skip locked)
     update public.notifications n set emailed_at = now()

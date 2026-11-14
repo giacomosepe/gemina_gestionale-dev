@@ -27,11 +27,11 @@ begin
   update public.profiles set role = 'client' where id = u_client;
 
   insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, paid_at, total_cents, vat_cents, raw, company_id, case_link_source) values
-    ('t20-theo', 'invoice', 'T1', 'unpaid', 'Emessa',    date '2027-02-01', date '2027-03-01', null,              122000, 22000, '{}', cx, 'manual'),
-    ('t20-mat',  'invoice', 'T2', 'paid',   'Incassata', date '2027-02-02', date '2027-03-02', date '2027-02-20', 122000, 22000, '{}', cx, 'manual'),
-    ('t20-mat2', 'invoice', 'T3', 'paid',   'Incassata', date '2027-02-03', date '2027-03-03', date '2027-02-21', 122000, 22000, '{}', cx, 'manual'),
-    ('t20-inv',  'invoice', 'T4', 'paid',   'Incassata', date '2027-02-04', date '2027-03-04', date '2027-02-22', 122000, 22000, '{}', cx, 'manual'),
-    ('t20-rec',  'invoice', 'T5', 'paid',   'Incassata', date '2027-02-05', date '2027-03-05', date '2027-02-23', 122000, 22000, '{}', cx, 'manual');
+    ('t20-theo', 'invoice', 'T1', 'unpaid', 'issued',    date '2027-02-01', date '2027-03-01', null,              122000, 22000, '{}', cx, 'manual'),
+    ('t20-mat',  'invoice', 'T2', 'paid',   'paid', date '2027-02-02', date '2027-03-02', date '2027-02-20', 122000, 22000, '{}', cx, 'manual'),
+    ('t20-mat2', 'invoice', 'T3', 'paid',   'paid', date '2027-02-03', date '2027-03-03', date '2027-02-21', 122000, 22000, '{}', cx, 'manual'),
+    ('t20-inv',  'invoice', 'T4', 'paid',   'paid', date '2027-02-04', date '2027-03-04', date '2027-02-22', 122000, 22000, '{}', cx, 'manual'),
+    ('t20-rec',  'invoice', 'T5', 'paid',   'paid', date '2027-02-05', date '2027-03-05', date '2027-02-23', 122000, 22000, '{}', cx, 'manual');
   select id into di_theo from public.qonto_documents where qonto_id = 't20-theo';
   select id into di_mat  from public.qonto_documents where qonto_id = 't20-mat';
   select id into di_mat2 from public.qonto_documents where qonto_id = 't20-mat2';
@@ -58,7 +58,7 @@ begin
   -- 1. a matured line becomes invoiced; the answer is the line with its new stage
   select * into res from public.mark_commissions_invoiced(array[l_mat, l_mat], '  FS-1  ', date '2027-03-15');
   get diagnostics n = row_count;
-  ok := n = 1 and res.id = l_mat and res.stage = 'Provvigioni fatturate' and res.partner_invoice_number = 'FS-1' and res.partner_invoiced_on = date '2027-03-15';
+  ok := n = 1 and res.id = l_mat and res.stage = 'invoiced' and res.partner_invoice_number = 'FS-1' and res.partner_invoiced_on = date '2027-03-15';
   failures := failures + (not ok)::int;
   report := report || format(E'%s a matured line is marked invoiced (number trimmed, repeated id counted once); the answer shows it in stage fatturate\n', case when ok then 'PASS' else 'FAIL' end);
 
@@ -78,7 +78,7 @@ begin
 
   -- 3. an invoiced line is marked paid
   select * into res from public.mark_commissions_paid(array[l_inv], date '2027-04-05');
-  ok := res.id = l_inv and res.stage = 'Provvigioni ricevute' and res.paid_on = date '2027-04-05';
+  ok := res.id = l_inv and res.stage = 'received' and res.paid_on = date '2027-04-05';
   failures := failures + (not ok)::int;
   report := report || format(E'%s an invoiced line is marked paid; the answer shows stage ricevute\n', case when ok then 'PASS' else 'FAIL' end);
 
@@ -104,9 +104,9 @@ begin
 
   -- 6. the date: invoiced may have none; paid defaults to today in Rome
   select * into res from public.mark_commissions_invoiced(array[l_mat2], 'FS-5', null);
-  ok := res.partner_invoiced_on is null and res.stage = 'Provvigioni fatturate';
+  ok := res.partner_invoiced_on is null and res.stage = 'invoiced';
   select * into res from public.mark_commissions_paid(array[l_mat2]);
-  ok := ok and res.paid_on = (now() at time zone 'Europe/Rome')::date and res.stage = 'Provvigioni ricevute';
+  ok := ok and res.paid_on = (now() at time zone 'Europe/Rome')::date and res.stage = 'received';
   failures := failures + (not ok)::int;
   report := report || format(E'%s invoice date can be empty; payment date defaults to today (Rome)\n', case when ok then 'PASS' else 'FAIL' end);
   reset role;

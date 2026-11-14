@@ -33,15 +33,15 @@ begin
     jsonb_build_object('id', r_c, 'zite_segnalatore_id', 't18-a', 'zite_azienda_id', 't18-y', 'commission_pct', 5, 'starts_on', '2027-01-01', 'duration_years', null, 'ends_on', null, 'removed', false)));
 
   insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, paid_at, total_cents, vat_cents, raw, company_id, removed_at) values
-    ('t18-unpaid', 'invoice', 'U1', 'unpaid',   'Emessa',    date '2027-02-10', date '2027-03-10', null,              122000, 22000, '{}', cx, null),
-    ('t18-paid',   'invoice', 'P1', 'paid',     'Incassata', date '2027-02-11', date '2027-03-11', date '2027-03-01', 122000, 22000, '{}', cx, null),
-    ('t18-cancel', 'invoice', 'C1', 'canceled', 'Annullata', date '2027-02-12', date '2027-03-12', null,              122000, 22000, '{}', cx, null),
-    ('t18-credit', 'credit_note', 'N1', 'credit_note', 'Incassata', date '2027-02-13', date '2027-02-13', null,       -12200, -2200, '{}', cx, null),
-    ('t18-gone',   'invoice', 'G1', 'paid',     'Incassata', date '2027-02-14', date '2027-03-14', date '2027-03-02', 122000, 22000, '{}', cx, now()),
-    ('t18-inv',    'invoice', 'I1', 'paid',     'Incassata', date '2027-02-15', date '2027-03-15', date '2027-03-03', 122000, 22000, '{}', cx, null),
-    ('t18-rec',    'invoice', 'R1', 'paid',     'Incassata', date '2027-02-16', date '2027-03-16', date '2027-03-04', 122000, 22000, '{}', cx, null),
-    ('t18-blank',  'invoice', 'B1', 'paid',     'Incassata', date '2027-02-17', date '2027-03-17', date '2027-03-05', 122000, 22000, '{}', cx, null),
-    ('t18-half',   'invoice', 'H1', 'unpaid',   'Emessa',    date '2027-02-18', date '2027-03-18', null,              123210, 22210, '{}', cx, null);
+    ('t18-unpaid', 'invoice', 'U1', 'unpaid',   'issued',    date '2027-02-10', date '2027-03-10', null,              122000, 22000, '{}', cx, null),
+    ('t18-paid',   'invoice', 'P1', 'paid',     'paid', date '2027-02-11', date '2027-03-11', date '2027-03-01', 122000, 22000, '{}', cx, null),
+    ('t18-cancel', 'invoice', 'C1', 'canceled', 'cancelled', date '2027-02-12', date '2027-03-12', null,              122000, 22000, '{}', cx, null),
+    ('t18-credit', 'credit_note', 'N1', 'credit_note', 'paid', date '2027-02-13', date '2027-02-13', null,       -12200, -2200, '{}', cx, null),
+    ('t18-gone',   'invoice', 'G1', 'paid',     'paid', date '2027-02-14', date '2027-03-14', date '2027-03-02', 122000, 22000, '{}', cx, now()),
+    ('t18-inv',    'invoice', 'I1', 'paid',     'paid', date '2027-02-15', date '2027-03-15', date '2027-03-03', 122000, 22000, '{}', cx, null),
+    ('t18-rec',    'invoice', 'R1', 'paid',     'paid', date '2027-02-16', date '2027-03-16', date '2027-03-04', 122000, 22000, '{}', cx, null),
+    ('t18-blank',  'invoice', 'B1', 'paid',     'paid', date '2027-02-17', date '2027-03-17', date '2027-03-05', 122000, 22000, '{}', cx, null),
+    ('t18-half',   'invoice', 'H1', 'unpaid',   'issued',    date '2027-02-18', date '2027-03-18', null,              123210, 22210, '{}', cx, null);
   select id into d_unpaid from public.qonto_documents where qonto_id = 't18-unpaid';
   select id into d_paid   from public.qonto_documents where qonto_id = 't18-paid';
   select id into d_cancel from public.qonto_documents where qonto_id = 't18-cancel';
@@ -60,11 +60,11 @@ begin
     (d_rec,    r_a, pa, 5, 100000, 5000, 'FS-2', date '2027-03-20', date '2027-04-01'),
     (d_blank,  r_a, pa, 5, 100000, 5000, '   ', null, null),
     (d_paid,   r_b, pb, 10, 100000, 10000, null, null, null);
-  ok := (select stage from public.commission_stages_v where invoice_id = d_unpaid) = 'Provvigioni teoriche'
-    and (select stage from public.commission_stages_v where invoice_id = d_paid and referral_id = r_a) = 'Provvigioni maturate'
-    and (select stage from public.commission_stages_v where invoice_id = d_inv) = 'Provvigioni fatturate'
-    and (select stage from public.commission_stages_v where invoice_id = d_rec) = 'Provvigioni ricevute'
-    and (select stage from public.commission_stages_v where invoice_id = d_blank) = 'Provvigioni maturate'
+  ok := (select stage from public.commission_stages_v where invoice_id = d_unpaid) = 'theoretical'
+    and (select stage from public.commission_stages_v where invoice_id = d_paid and referral_id = r_a) = 'matured'
+    and (select stage from public.commission_stages_v where invoice_id = d_inv) = 'invoiced'
+    and (select stage from public.commission_stages_v where invoice_id = d_rec) = 'received'
+    and (select stage from public.commission_stages_v where invoice_id = d_blank) = 'matured'
     and (select stage_order from public.commission_stages_v where invoice_id = d_rec) = 4
     and (select stage_order from public.commission_stages_v where invoice_id = d_unpaid) = 1;
   failures := failures + (not ok)::int;
@@ -73,9 +73,9 @@ begin
   -- the invoice paying moves the stage with no change on the line
   -- the rebuild trigger (20261023170220) would drop this hand-made line, because the made-up invoice has no pratica; pause it (DDL rolls back with the test)
   alter table public.qonto_documents disable trigger qonto_documents_rebuild_commissions_upd;
-  update public.qonto_documents set status = 'Incassata', paid_at = date '2027-03-09' where id = d_unpaid;
+  update public.qonto_documents set status = 'paid', paid_at = date '2027-03-09' where id = d_unpaid;
   alter table public.qonto_documents enable trigger qonto_documents_rebuild_commissions_upd;
-  ok := (select stage from public.commission_stages_v where invoice_id = d_unpaid) = 'Provvigioni maturate';
+  ok := (select stage from public.commission_stages_v where invoice_id = d_unpaid) = 'matured';
   failures := failures + (not ok)::int;
   report := report || format(E'%s a teoriche line becomes maturate by itself when its invoice is paid\n', case when ok then 'PASS' else 'FAIL' end);
 

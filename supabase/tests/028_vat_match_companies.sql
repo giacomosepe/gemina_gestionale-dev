@@ -64,7 +64,7 @@ begin
 
   -- the invoices: Qonto client id, VAT and tax id as Qonto sends them
   insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, total_cents, vat_cents, raw, qonto_client_id)
-  select v.q, 'invoice', v.num, 'unpaid', 'Emessa', date '2027-02-01', date '2027-03-01', 122000, 22000,
+  select v.q, 'invoice', v.num, 'unpaid', 'issued', date '2027-02-01', date '2027-03-01', 122000, 22000,
          jsonb_build_object('client', jsonb_strip_nulls(jsonb_build_object('id', v.cid, 'name', v.nm, 'vat_number', v.vat, 'tax_identification_number', v.tax))), v.cid
     from (values
       ('t28-a',  'V1',  'qc-a',  'Alfa Testing Srl',      'IT90000000011', '90000000011'),   -- company 90000000011
@@ -88,15 +88,15 @@ begin
   select id into di from public.qonto_documents where qonto_id = 't28-i'; select id into dt from public.qonto_documents where qonto_id = 't28-t';
   -- the Qonto client of dz is already held by ANOTHER company (c_z2) while the VAT points to c_z1; dw1/dw2 are two Qonto clients without VAT
   insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, total_cents, vat_cents, raw, qonto_client_id)
-    values ('t28-z', 'invoice', 'V15', 'unpaid', 'Emessa', date '2027-02-01', date '2027-03-01', 122000, 22000,
+    values ('t28-z', 'invoice', 'V15', 'unpaid', 'issued', date '2027-02-01', date '2027-03-01', 122000, 22000,
             jsonb_build_object('client', jsonb_build_object('id', 'qc-z', 'name', 'Zeta Testing', 'vat_number', 'IT90000000140')), 'qc-z'),
-           ('t28-w1', 'invoice', 'V16', 'unpaid', 'Emessa', date '2027-02-01', date '2027-03-01', 122000, 22000, jsonb_build_object('client', jsonb_build_object('id', 'qc-w1', 'name', 'Omega primo')), 'qc-w1'),
-           ('t28-w2', 'invoice', 'V17', 'unpaid', 'Emessa', date '2027-02-01', date '2027-03-01', 122000, 22000, jsonb_build_object('client', jsonb_build_object('id', 'qc-w2', 'name', 'Omega secondo')), 'qc-w2');
+           ('t28-w1', 'invoice', 'V16', 'unpaid', 'issued', date '2027-02-01', date '2027-03-01', 122000, 22000, jsonb_build_object('client', jsonb_build_object('id', 'qc-w1', 'name', 'Omega primo')), 'qc-w1'),
+           ('t28-w2', 'invoice', 'V17', 'unpaid', 'issued', date '2027-02-01', date '2027-03-01', 122000, 22000, jsonb_build_object('client', jsonb_build_object('id', 'qc-w2', 'name', 'Omega secondo')), 'qc-w2');
   select id into dz from public.qonto_documents where qonto_id = 't28-z'; select id into dw1 from public.qonto_documents where qonto_id = 't28-w1';
   select id into dw2 from public.qonto_documents where qonto_id = 't28-w2';
   -- an invoice that already has a company (of another VAT): the matching must not touch it
   insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, total_cents, vat_cents, raw, qonto_client_id, company_id)
-    values ('t28-u', 'invoice', 'V11', 'unpaid', 'Emessa', date '2027-02-01', date '2027-03-01', 122000, 22000,
+    values ('t28-u', 'invoice', 'V11', 'unpaid', 'issued', date '2027-02-01', date '2027-03-01', 122000, 22000,
             jsonb_build_object('client', jsonb_build_object('id', 'qc-u', 'name', 'Upsilon', 'vat_number', 'IT90000000101')), 'qc-u', c_u0) returning id into du;
 
   -- the trigger path needs a pratica and a referral for company Tau
@@ -220,7 +220,7 @@ begin
   -- an invoice with no Qonto client id: only that invoice is linked, no id is written
   reset role;
   insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, total_cents, vat_cents, raw, qonto_client_id)
-    values ('t28-n', 'invoice', 'V12', 'unpaid', 'Emessa', date '2027-02-01', date '2027-03-01', 122000, 22000, '{}'::jsonb, null);
+    values ('t28-n', 'invoice', 'V12', 'unpaid', 'issued', date '2027-02-01', date '2027-03-01', 122000, 22000, '{}'::jsonb, null);
   perform set_config('request.jwt.claims', json_build_object('sub', u_mgr, 'role', 'authenticated')::text, true);
   set local role authenticated;
   select count(*) into n from public.link_invoice_to_company((select id from public.qonto_documents where qonto_id = 't28-n'), c_s);
@@ -249,9 +249,9 @@ begin
 
   -- 5. at the end of a sync run
   insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, total_cents, vat_cents, raw, qonto_client_id)
-    values ('t28-r', 'invoice', 'V13', 'unpaid', 'Emessa', date '2027-02-01', date '2027-03-01', 122000, 22000,
+    values ('t28-r', 'invoice', 'V13', 'unpaid', 'issued', date '2027-02-01', date '2027-03-01', 122000, 22000,
             jsonb_build_object('client', jsonb_build_object('id', 'qc-r', 'name', 'Rho Testing', 'vat_number', 'IT90000000120')), 'qc-r'),
-           ('t28-s', 'invoice', 'V14', 'unpaid', 'Emessa', date '2027-02-01', date '2027-03-01', 122000, 22000,
+           ('t28-s', 'invoice', 'V14', 'unpaid', 'issued', date '2027-02-01', date '2027-03-01', 122000, 22000,
             jsonb_build_object('client', jsonb_build_object('id', 'qc-s2', 'name', 'Sigma Testing', 'vat_number', 'IT90000000130')), 'qc-s2');
   select id into dr from public.qonto_documents where qonto_id = 't28-r'; select id into ds from public.qonto_documents where qonto_id = 't28-s';
   insert into public.qonto_sync_runs default values returning id into run1;

@@ -48,21 +48,21 @@ begin
   --                   X5 paid + partner invoice, then cancelled; X6 paid + partner invoice, then removed in Qonto; XC a credit note (no line);
   --                   X7 on the closed pratica. W (B 10%, C 5%): W1 paid.
   insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, paid_at, total_cents, vat_cents, raw, company_id, case_id, case_link_source) values
-    ('t27-x1', 'invoice', 'X1', 'unpaid', 'Emessa',    date '2027-02-01', date '2027-03-01', null,              122000, 22000, '{}', cx, p_open,   'zite'),
-    ('t27-x2', 'invoice', 'X2', 'paid',   'Incassata', date '2027-02-02', date '2027-03-02', date '2027-03-01', 122000, 22000, '{}', cx, p_open,   'zite'),
-    ('t27-x3', 'invoice', 'X3', 'paid',   'Incassata', date '2027-02-03', date '2027-03-03', date '2027-03-02', 122000, 22000, '{}', cx, p_open,   'zite'),
-    ('t27-x4', 'invoice', 'X4', 'paid',   'Incassata', date '2027-02-04', date '2027-03-04', date '2027-03-03', 122000, 22000, '{}', cx, p_open,   'zite'),
-    ('t27-x5', 'invoice', 'X5', 'paid',   'Incassata', date '2027-02-05', date '2027-03-05', date '2027-03-04', 122000, 22000, '{}', cx, p_open,   'zite'),
-    ('t27-x6', 'invoice', 'X6', 'paid',   'Incassata', date '2027-02-06', date '2027-03-06', date '2027-03-05', 122000, 22000, '{}', cx, p_open,   'zite'),
-    ('t27-xc', 'credit_note', 'XC', 'credit_note', 'Incassata', date '2027-02-07', date '2027-02-07', null,     -12200, -2200, '{}', cx, p_open,   'zite'),
-    ('t27-x7', 'invoice', 'X7', 'unpaid', 'Emessa',    date '2027-02-08', date '2027-03-08', null,               61000, 11000, '{}', cx, p_closed, 'zite'),
-    ('t27-w1', 'invoice', 'W1', 'paid',   'Incassata', current_date - 30, current_date, current_date - 20, 244000, 44000, '{}', cw, p_w,      'zite');
+    ('t27-x1', 'invoice', 'X1', 'unpaid', 'issued',    date '2027-02-01', date '2027-03-01', null,              122000, 22000, '{}', cx, p_open,   'zite'),
+    ('t27-x2', 'invoice', 'X2', 'paid',   'paid', date '2027-02-02', date '2027-03-02', date '2027-03-01', 122000, 22000, '{}', cx, p_open,   'zite'),
+    ('t27-x3', 'invoice', 'X3', 'paid',   'paid', date '2027-02-03', date '2027-03-03', date '2027-03-02', 122000, 22000, '{}', cx, p_open,   'zite'),
+    ('t27-x4', 'invoice', 'X4', 'paid',   'paid', date '2027-02-04', date '2027-03-04', date '2027-03-03', 122000, 22000, '{}', cx, p_open,   'zite'),
+    ('t27-x5', 'invoice', 'X5', 'paid',   'paid', date '2027-02-05', date '2027-03-05', date '2027-03-04', 122000, 22000, '{}', cx, p_open,   'zite'),
+    ('t27-x6', 'invoice', 'X6', 'paid',   'paid', date '2027-02-06', date '2027-03-06', date '2027-03-05', 122000, 22000, '{}', cx, p_open,   'zite'),
+    ('t27-xc', 'credit_note', 'XC', 'credit_note', 'paid', date '2027-02-07', date '2027-02-07', null,     -12200, -2200, '{}', cx, p_open,   'zite'),
+    ('t27-x7', 'invoice', 'X7', 'unpaid', 'issued',    date '2027-02-08', date '2027-03-08', null,               61000, 11000, '{}', cx, p_closed, 'zite'),
+    ('t27-w1', 'invoice', 'W1', 'paid',   'paid', current_date - 30, current_date, current_date - 20, 244000, 44000, '{}', cw, p_w,      'zite');
 
   -- put each line in its stage (the rebuild created the lines when the invoices were saved)
   update public.commissions c set partner_invoice_number = 'FP-3', partner_invoiced_on = date '2027-03-10'
     from public.qonto_documents d where d.id = c.invoice_id and d.qonto_id in ('t27-x3', 't27-x4', 't27-x5', 't27-x6');
   update public.commissions c set paid_on = date '2027-03-20' from public.qonto_documents d where d.id = c.invoice_id and d.qonto_id = 't27-x4';
-  update public.qonto_documents set status = 'Annullata', status_qonto = 'canceled' where qonto_id = 't27-x5';
+  update public.qonto_documents set status = 'cancelled', status_qonto = 'canceled' where qonto_id = 't27-x5';
   update public.qonto_documents set removed_at = now() where qonto_id = 't27-x6';
 
   -- structure: columns, grants, nothing staff-only
@@ -91,7 +91,7 @@ begin
   failures := failures + (not ok)::int;
   report := report || format(E'%s A sees only A''s lines: X1..X7 (got %s): X5 (cancelled) and X6 (removed) stay because already invoiced; not W1 (not A''s client), nor B''s lines\n', case when ok then 'PASS' else 'FAIL' end, v);
   select string_agg(invoice_number || '=' || stage, ',' order by invoice_number) into v from public.partner_commissions();
-  ok := v = 'X1=Provvigioni teoriche,X2=Provvigioni maturate,X3=Provvigioni fatturate,X4=Provvigioni ricevute,X5=Provvigioni fatturate,X6=Provvigioni fatturate,X7=Provvigioni teoriche';
+  ok := v = 'X1=theoretical,X2=matured,X3=invoiced,X4=received,X5=invoiced,X6=invoiced,X7=theoretical';
   failures := failures + (not ok)::int;
   report := report || format(E'%s the four stages come out right (got %s)\n', case when ok then 'PASS' else 'FAIL' end, v);
   ok := v_expected is not null and v_expected = (select string_agg(f.id || ':' || f.stage || ':' || f.stage_order, ',' order by f.id) from public.partner_commissions() f);

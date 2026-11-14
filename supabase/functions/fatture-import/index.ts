@@ -157,7 +157,7 @@ async function pagina(p: Record<string, unknown>) {
 }
 
 // Only the known facets, each a short list of short strings: whatever else arrives is dropped.
-const FACCETTE = ["stato", "bene", "fornitore", "categoria", "anno", "tipo", "avvisi"];
+const FACCETTE = ["status", "asset", "supplier", "category", "year", "type", "alerts"];
 function soloFiltri(v: unknown): Record<string, string[]> {
   const out: Record<string, string[]> = {};
   if (!v || typeof v !== "object") return out;

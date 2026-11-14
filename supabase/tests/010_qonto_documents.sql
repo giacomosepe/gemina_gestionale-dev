@@ -34,14 +34,14 @@ begin
   -- the service role writes (as the sync function does)
   set local role service_role;
   insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, paid_at, total_cents, vat_cents, raw)
-    values ('t10-inv-1', 'invoice', 'T10-001', 'paid', 'Incassata', date '2026-01-10', date '2026-02-10', date '2026-02-01', 122000, 22000, '{"id":"t10-inv-1"}')
+    values ('t10-inv-1', 'invoice', 'T10-001', 'paid', 'paid', date '2026-01-10', date '2026-02-10', date '2026-02-01', 122000, 22000, '{"id":"t10-inv-1"}')
     returning id into d1;
   insert into public.qonto_documents (qonto_id, kind, status_qonto, status, issue_date, total_cents, vat_cents, raw)
-    values ('t10-cn-1', 'credit_note', 'unpaid', 'Emessa', date '2026-01-20', -12200, -2200, '{}');
+    values ('t10-cn-1', 'credit_note', 'unpaid', 'issued', date '2026-01-20', -12200, -2200, '{}');
   insert into public.qonto_sync_runs (fetched_count, inserted_count) values (7777, 7777);  -- marker: real runs may exist
   reset role;
   select * into r from public.qonto_documents where id = d1;
-  ok := r.net_cents = 100000 and r.status = 'Incassata' and r.company_id is null and r.zite_pratica_id is null and r.currency = 'EUR';
+  ok := r.net_cents = 100000 and r.status = 'paid' and r.company_id is null and r.zite_pratica_id is null and r.currency = 'EUR';
   failures := failures + (not ok)::int;
   report := report || format(E'%s service role inserts; net = total - VAT in cents (got %s)\n', case when ok then 'PASS' else 'FAIL' end, r.net_cents);
 
@@ -53,7 +53,7 @@ begin
   -- constraints
   begin
     insert into public.qonto_documents (qonto_id, kind, status_qonto, status, issue_date, total_cents, vat_cents, raw)
-      values ('t10-inv-1', 'invoice', 'paid', 'Incassata', date '2026-01-10', 1, 0, '{}');
+      values ('t10-inv-1', 'invoice', 'paid', 'paid', date '2026-01-10', 1, 0, '{}');
     ok := false;
   exception when unique_violation then ok := true; end;
   failures := failures + (not ok)::int;
@@ -61,7 +61,7 @@ begin
 
   begin
     insert into public.qonto_documents (qonto_id, kind, status_qonto, status, issue_date, total_cents, vat_cents, raw)
-      values ('t10-bad-status', 'invoice', 'late', 'Scaduta', date '2026-01-10', 1, 0, '{}');
+      values ('t10-bad-status', 'invoice', 'late', 'overdue', date '2026-01-10', 1, 0, '{}');
     ok := false;
   exception when check_violation then ok := true; end;
   failures := failures + (not ok)::int;
@@ -69,7 +69,7 @@ begin
 
   begin
     insert into public.qonto_documents (qonto_id, kind, status_qonto, status, issue_date, total_cents, vat_cents, raw)
-      values ('t10-bad-kind', 'quote', 'paid', 'Incassata', date '2026-01-10', 1, 0, '{}');
+      values ('t10-bad-kind', 'quote', 'paid', 'paid', date '2026-01-10', 1, 0, '{}');
     ok := false;
   exception when check_violation then ok := true; end;
   failures := failures + (not ok)::int;
@@ -77,7 +77,7 @@ begin
 
   begin
     insert into public.qonto_documents (qonto_id, kind, status_qonto, status, issue_date, total_cents, vat_cents, raw)
-      values ('t10-cn-pos', 'credit_note', 'unpaid', 'Emessa', date '2026-01-20', 100, 10, '{}');
+      values ('t10-cn-pos', 'credit_note', 'unpaid', 'issued', date '2026-01-20', 100, 10, '{}');
     ok := false;
   exception when check_violation then ok := true; end;
   failures := failures + (not ok)::int;
@@ -100,7 +100,7 @@ begin
   -- no write for staff (clients of the API)
   begin
     insert into public.qonto_documents (qonto_id, kind, status_qonto, status, issue_date, total_cents, vat_cents, raw)
-      values ('t10-staff', 'invoice', 'paid', 'Incassata', date '2026-01-10', 1, 0, '{}');
+      values ('t10-staff', 'invoice', 'paid', 'paid', date '2026-01-10', 1, 0, '{}');
     ok := false;
   exception when insufficient_privilege then ok := true; end;
   failures := failures + (not ok)::int;
@@ -131,7 +131,7 @@ begin
 
   begin
     insert into public.qonto_documents (qonto_id, kind, status_qonto, status, issue_date, total_cents, vat_cents, raw)
-      values ('t10-ref', 'invoice', 'paid', 'Incassata', date '2026-01-10', 1, 0, '{}');
+      values ('t10-ref', 'invoice', 'paid', 'paid', date '2026-01-10', 1, 0, '{}');
     ok := false;
   exception when insufficient_privilege then ok := true; end;
   failures := failures + (not ok)::int;
@@ -156,7 +156,7 @@ begin
 
   begin
     insert into public.qonto_documents (qonto_id, kind, status_qonto, status, issue_date, total_cents, vat_cents, raw)
-      values ('t10-anon', 'invoice', 'paid', 'Incassata', date '2026-01-10', 1, 0, '{}');
+      values ('t10-anon', 'invoice', 'paid', 'paid', date '2026-01-10', 1, 0, '{}');
     ok := false;
   exception when insufficient_privilege then ok := true; end;
   failures := failures + (not ok)::int;

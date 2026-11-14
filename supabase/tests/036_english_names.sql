@@ -18,11 +18,11 @@ begin
     select kind, name from (
       select 'table' as kind, n.nspname || '.' || c.relname as name, c.relname as word_source
         from pg_class c join pg_namespace n on n.oid = c.relnamespace
-       where n.nspname in ('public', 'private') and c.relkind in ('r', 'p', 'v', 'm')
+       where n.nspname in ('public', 'private') and c.relkind in ('r', 'p', 'v', 'm', 'c')
       union all
       select 'column', n.nspname || '.' || c.relname || '.' || a.attname, a.attname
         from pg_class c join pg_namespace n on n.oid = c.relnamespace join pg_attribute a on a.attrelid = c.oid and a.attnum > 0 and not a.attisdropped
-       where n.nspname in ('public', 'private') and c.relkind in ('r', 'p', 'v', 'm')
+       where n.nspname in ('public', 'private') and c.relkind in ('r', 'p', 'v', 'm', 'c')
       union all
       select 'function', n.nspname || '.' || p.proname, p.proname
         from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname in ('public', 'private')
@@ -47,6 +47,24 @@ begin
     failures := failures + 1;
     report := report || format(E'FAIL %s %s has an Italian word\n', r.kind, r.name);
   end loop;
-  if failures = 0 then report := E'PASS every table, view, column, function, constraint, index, policy, trigger and enum value is English (names with zite are the known exception)\n'; end if;
+  -- values our own code defined in Italian (statuses, stages, events, signature and supplier invoice states, permission keys): none may be left in a function or a view
+  for r in
+    select x.kind, x.name || ' has ' || lit as name from (
+      select 'function' as kind, p.proname as name, v as lit
+        from pg_proc p cross join unnest(array['Emessa','Incassata','Annullata','Scaduta','Provvigioni teoriche','Provvigioni fatturate','Provvigioni maturate','Provvigioni ricevute',
+             'messaggi','documenti','promemoria','da_verificare','da_assegnare','parziale','assegnata','modificata','rimossa','da_preparare','pronto','inviato','firmato_in_parte','firmato',
+             'archiviato','no_pratica','beni.manage','scadenze.manage','pratiche.set_beneficiary','invoices.link_pratica']) v
+       where p.pronamespace in ('public'::regnamespace, 'private'::regnamespace) and p.prokind = 'f' and pg_get_functiondef(p.oid) like '%''' || v || '''%'
+      union all
+      select 'view', c.relname, v from pg_class c cross join unnest(array['Emessa','Incassata','Annullata','Scaduta','Provvigioni teoriche','Provvigioni fatturate','Provvigioni maturate',
+             'Provvigioni ricevute','da_preparare','pronto','inviato','firmato_in_parte','firmato','archiviato','no_pratica']) v
+       where c.relnamespace in ('public'::regnamespace, 'private'::regnamespace) and c.relkind = 'v' and pg_get_viewdef(c.oid) like '%''' || v || '''%'
+    ) x
+    order by 1, 2
+  loop
+    failures := failures + 1;
+    report := report || format(E'FAIL %s %s (an Italian value)\n', r.kind, r.name);
+  end loop;
+  if failures = 0 then report := E'PASS every table, view, column, function, constraint, index, policy, trigger and enum value is English (names with zite are the known exception), and no Italian value is left in a function or view\n'; end if;
   raise exception E'TEST REPORT (036 english names): % failure(s)\n%', failures, report;
 end $$;

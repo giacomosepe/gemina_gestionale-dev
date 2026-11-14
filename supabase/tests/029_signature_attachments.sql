@@ -56,15 +56,15 @@ begin
 
   -- a document to sign
   insert into public.signature_attachments (case_id, deadline_id, zite_dato_id, name, signatures_required, signers)
-  values (pr1, sc1, 'dato-0001-questionario', '  Questionario PMS ', 2, array['cliente', 'gemina']) returning id into a1;
+  values (pr1, sc1, 'dato-0001-questionario', '  Questionario PMS ', 2, array['client', 'gemina']) returning id into a1;
   select * into r from public.signature_attachments_v where id = a1;
-  ok := r.name = 'Questionario PMS' and r.status = 'da_preparare' and r.signatures_done = 0 and r.created_by = u_s1 and r.last_event = 'created';
+  ok := r.name = 'Questionario PMS' and r.status = 'to_prepare' and r.signatures_done = 0 and r.created_by = u_s1 and r.last_event = 'created';
   failures := failures + (not ok)::int;
   report := report || format(E'%s a new document: trimmed name, state da_preparare, author set, event created\n', case when ok then 'PASS' else 'FAIL' end);
 
   begin
     insert into public.signature_attachments (case_id, deadline_id, zite_dato_id, name, signatures_required, signers)
-    values (pr1, sc_other, 'dato-0001-questionario', 'X', 1, array['cliente']);
+    values (pr1, sc_other, 'dato-0001-questionario', 'X', 1, array['client']);
     ok := false;
   exception when foreign_key_violation then ok := true; end;
   failures := failures + (not ok)::int;
@@ -72,7 +72,7 @@ begin
 
   begin
     insert into public.signature_attachments (case_id, deadline_id, zite_dato_id, name, signatures_required, signers)
-    values (pr1, sc1, 'dato-0001-questionario', 'Twice', 1, array['cliente']);
+    values (pr1, sc1, 'dato-0001-questionario', 'Twice', 1, array['client']);
     ok := false;
   exception when unique_violation then ok := true; end;
   failures := failures + (not ok)::int;
@@ -80,7 +80,7 @@ begin
 
   begin
     insert into public.signature_attachments (case_id, deadline_id, zite_dato_id, name, signatures_required, signers)
-    values (pr1, sc2, 'dato-0002-mandato', 'Mandato', 1, array['cliente', 'gemina']);
+    values (pr1, sc2, 'dato-0002-mandato', 'Mandato', 1, array['client', 'gemina']);
     ok := false;
   exception when check_violation then ok := true; end;
   begin
@@ -92,7 +92,7 @@ begin
   report := report || format(E'%s signers: only cliente / gemina, never more than the signatures required\n', case when ok then 'PASS' else 'FAIL' end);
 
   insert into public.signature_attachments (case_id, deadline_id, zite_dato_id, name, signatures_required, signers, sent_at, sent_by)
-  values (pr1, sc2, 'dato-0002-mandato', 'Mandato', 1, array['cliente'], now(), u_s2) returning id into a2;
+  values (pr1, sc2, 'dato-0002-mandato', 'Mandato', 1, array['client'], now(), u_s2) returning id into a2;
   ok := (select sent_at is null and sent_by is null from public.signature_attachments where id = a2);
   failures := failures + (not ok)::int;
   report := report || format(E'%s a new row cannot arrive already sent\n', case when ok then 'PASS' else 'FAIL' end);
@@ -101,7 +101,7 @@ begin
   insert into public.signature_attachment_files (attachment_id, kind, file_name, drive_file_id, signatures, sha256, size_bytes, storage_path)
   values (a1, 'original', 'Questionario PMS.pdf', 'DriveFile0000001', 0, sha_o, 1000, org::text || '/' || a1::text || '/' || sha_o || '.pdf') returning id into f1;
   select * into r from public.signature_attachments_v where id = a1;
-  ok := r.status = 'pronto' and r.current_file_name = 'Questionario PMS.pdf' and r.last_event = 'file';
+  ok := r.status = 'ready' and r.current_file_name = 'Questionario PMS.pdf' and r.last_event = 'file';
   failures := failures + (not ok)::int;
   report := report || format(E'%s with its original: state pronto, current file, event file\n', case when ok then 'PASS' else 'FAIL' end);
 
@@ -134,13 +134,13 @@ begin
   -- sent (step 9 writes these): who sent is the colleague, whatever the request says
   update public.signature_attachments set sent_at = now(), sent_to = 'cliente@example.test', sent_message_id = 'msg-1', sent_by = u_s2 where id = a1;
   select * into r from public.signature_attachments_v where id = a1;
-  ok := r.status = 'inviato' and r.sent_by = u_s1 and r.last_event = 'sent'
+  ok := r.status = 'sent' and r.sent_by = u_s1 and r.last_event = 'sent'
         and (select detail->>'to' from public.signature_events where attachment_id = a1 and event = 'sent') = 'cliente@example.test';
   failures := failures + (not ok)::int;
   report := report || format(E'%s sent: state inviato, sender = the colleague, event sent with the address\n', case when ok then 'PASS' else 'FAIL' end);
 
-  update public.signature_attachments set signatures_required = 1, signers = array['cliente'] where id = a1;
-  ok := (select signatures_required = 2 and signers = array['cliente', 'gemina'] from public.signature_attachments where id = a1);
+  update public.signature_attachments set signatures_required = 1, signers = array['client'] where id = a1;
+  ok := (select signatures_required = 2 and signers = array['client', 'gemina'] from public.signature_attachments where id = a1);
   failures := failures + (not ok)::int;
   report := report || format(E'%s after sending, signatures and signers stay as they were\n', case when ok then 'PASS' else 'FAIL' end);
 
@@ -148,11 +148,11 @@ begin
   insert into public.signature_attachment_files (attachment_id, kind, file_name, drive_file_id, signatures, sha256)
   values (a1, 'signed', 'Questionario PMS.pdf.p7m', 'DriveFile0000005', 1, sha_s1);
   select * into r from public.signature_attachments_v where id = a1;
-  ok := r.status = 'firmato_in_parte' and r.signatures_done = 1 and r.current_kind = 'signed' and r.last_event = 'signed_file';
+  ok := r.status = 'partly_signed' and r.signatures_done = 1 and r.current_kind = 'signed' and r.last_event = 'signed_file';
   insert into public.signature_attachment_files (attachment_id, kind, file_name, drive_file_id, signatures, sha256)
   values (a1, 'signed', 'Questionario PMS.pdf.p7m.p7m', 'DriveFile0000006', 2, sha_s2);
   select * into r from public.signature_attachments_v where id = a1;
-  ok := ok and r.status = 'firmato' and r.signatures_done = 2 and r.current_file_name = 'Questionario PMS.pdf.p7m.p7m';
+  ok := ok and r.status = 'signed' and r.signatures_done = 2 and r.current_file_name = 'Questionario PMS.pdf.p7m.p7m';
   failures := failures + (not ok)::int;
   report := report || format(E'%s 1 of 2 signatures = firmato_in_parte, 2 of 2 = firmato, the latest signed file is current\n', case when ok then 'PASS' else 'FAIL' end);
 
@@ -167,16 +167,16 @@ begin
 
   -- marked signed by hand, and back
   update public.signature_attachments set marked_signed_at = now() where id = a2;
-  ok := (select status = 'firmato' and marked_signed_by = u_s1 from public.signature_attachments_v where id = a2);
+  ok := (select status = 'signed' and marked_signed_by = u_s1 from public.signature_attachments_v where id = a2);
   update public.signature_attachments set marked_signed_at = null where id = a2;
-  ok := ok and (select status = 'da_preparare' and marked_signed_by is null from public.signature_attachments_v where id = a2)
+  ok := ok and (select status = 'to_prepare' and marked_signed_by is null from public.signature_attachments_v where id = a2)
         and (select array_agg(event order by created_at, event) from public.signature_events where attachment_id = a2) @> array['created', 'marked_signed', 'unmarked'];
   failures := failures + (not ok)::int;
   report := report || format(E'%s «Segna come firmati» and back, both in the history\n', case when ok then 'PASS' else 'FAIL' end);
 
   -- archived
   update public.signature_attachments set archived = true where id = a2;
-  ok := (select status from public.signature_attachments_v where id = a2) = 'archiviato';
+  ok := (select status from public.signature_attachments_v where id = a2) = 'archived';
   begin
     insert into public.signature_attachment_files (attachment_id, kind, file_name, drive_file_id, signatures, sha256)
     values (a2, 'original', 'Mandato.pdf', 'DriveFile0000007', 0, repeat('d', 64));
@@ -209,7 +209,7 @@ begin
   ok := n = 0 and (select count(*) from public.signature_events) = 0 and (select count(*) from public.signature_attachment_files) = 0;
   begin
     insert into public.signature_attachments (case_id, deadline_id, zite_dato_id, name, signatures_required, signers)
-    values (pr1, sc2, 'dato-0003-altro', 'Altro', 1, array['cliente']);
+    values (pr1, sc2, 'dato-0003-altro', 'Altro', 1, array['client']);
     ok := false;
   -- a referrer cannot even see the scadenza, so the check on it refuses first
   exception when insufficient_privilege or foreign_key_violation then ok := ok; end;
