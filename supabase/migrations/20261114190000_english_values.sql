@@ -9,6 +9,9 @@
 -- private.name_tokens (they are Italian company-name words on purpose), local variable and alias names inside function bodies, and the data that comes
 -- from Zite (cases.status and similar): the import runner maps those values (M1).
 
+-- the functions are rewritten one by one, and some read columns that another function returns: check the bodies when the transaction is done, not at each step
+set local check_function_bodies = off;
+
 create temporary table vmap (scope text not null, old_value text not null, new_value text not null) on commit drop;
 
 insert into vmap (scope, old_value, new_value) values
