@@ -1,7 +1,9 @@
 {
-  // Cloudflare Workers (static assets). The Worker is named like the Cloudflare project; the build runs `npm run build` at the repo root.
+  // Cloudflare Workers (static assets). The Worker is named like the Cloudflare project.
   "name": "gemina-gestionale-dev",
   "compatibility_date": "2026-11-01",
+  // The Cloudflare project has no build command set, so wrangler runs the build itself before it publishes.
+  "build": { "command": "npm run build" },
   "assets": {
     "directory": "./web/dist",
     "not_found_handling": "single-page-application"
