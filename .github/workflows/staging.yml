@@ -31,10 +31,11 @@ jobs:
           supabase link --project-ref "$PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
       - name: Apply migrations
         if: ${{ inputs.push_migrations }}
-        run: supabase db push --include-all --yes
+        run: supabase db push --remote --include-all --yes
       - name: Run database tests
         env:
           PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: |
+          if [ ! -f supabase/.temp/pooler-url ]; then echo "pooler-url missing after link:"; ls -a supabase/.temp; exit 1; fi
           export PGURL="$(cat supabase/.temp/pooler-url)"
           supabase/scripts/run_tests.sh
