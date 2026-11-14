@@ -91,7 +91,7 @@ begin
   failures := failures + (not ok)::int;
   report := report || format(E'%s A sees only A''s lines: X1..X7 (got %s): X5 (cancelled) and X6 (removed) stay because already invoiced; not W1 (not A''s client), nor B''s lines\n', case when ok then 'PASS' else 'FAIL' end, v);
   select string_agg(invoice_number || '=' || stage, ',' order by invoice_number) into v from public.partner_commissions();
-  ok := v = 'X1=Provvigioni teoriche,X2=Provvigioni maturate,X3=Provvigioni fatturate,X4=Provvigioni ricevute,X5=Provvigioni fatturate,X6=Provvigioni fatturate,X7=Provvigioni teoriche';
+  ok := v = 'X1=theoretical,X2=matured,X3=invoiced,X4=received,X5=invoiced,X6=invoiced,X7=theoretical';
   failures := failures + (not ok)::int;
   report := report || format(E'%s the four stages come out right (got %s)\n', case when ok then 'PASS' else 'FAIL' end, v);
   ok := v_expected is not null and v_expected = (select string_agg(f.id || ':' || f.stage || ':' || f.stage_order, ',' order by f.id) from public.partner_commissions() f);
