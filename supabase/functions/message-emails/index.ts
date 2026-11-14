@@ -92,7 +92,18 @@ function text(e: Email): string {
     .filter(Boolean).join("\n\n");
 }
 
+// Last line of defence, for EVERY recipient (referrers and the team): outside production (PARTNER_EMAILS_REAL not "true") an email goes only to an
+// address on DEV_TEST_PARTNER_EMAILS; anything else is dropped and logged. Staging holds a copy of the real data (CLAUDE.md rule 6), so this must not
+// depend on which code path built the message. It answers true so that the caller does not retry the same message at every run.
+function recipientAllowed(to: string): boolean {
+  return PARTNER_EMAILS_REAL || DEV_TEST_PARTNER_EMAILS.has(to.toLowerCase());
+}
+
 async function send(m: { from: string; to: string; replyTo?: string; subject: string; email: Email }): Promise<boolean> {
+  if (!recipientAllowed(m.to)) {
+    console.warn("email blocked: recipient is not on DEV_TEST_PARTNER_EMAILS and this project is not live");
+    return true;
+  }
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { authorization: `Bearer ${RESEND_API_KEY}`, "content-type": "application/json" },
