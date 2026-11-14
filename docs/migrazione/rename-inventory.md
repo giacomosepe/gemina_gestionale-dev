@@ -1,4 +1,6 @@
-# Italian names in the database today (read from production, 14 Nov 2026)
+# Italian names in the database (read from production, 14 Nov 2026)
+
+**Status, 14 Nov 2026: the rename below is applied on staging (migration `20261114160000_english_names.sql`), tests 001-035 follow the new names and guard test 036 keeps them English. Production only at the cutover.** What was deliberately left for later steps is at the end of this file.
 
 The schema is already mostly English. What remains, and what it becomes (words from `glossary.md`). Linear: PM-191.
 
@@ -46,3 +48,11 @@ Each becomes the same name with `case` or `asset` in place of `pratica` or `bene
 3. Tests 001–035 are updated to the new names and run after it.
 4. A guard test (036) fails when a table, column or function name contains a glossary word in Italian. Until the rename is applied it lists the names above as known exceptions, and the list is emptied by the rename.
 5. The same names are used in the new tables of every later milestone from the start.
+
+## Left for later (known exceptions of guard test 036 and of the rename)
+
+- The `zite_*`, `record_zite_id` and `trattativa_zite_id` columns (and the indexes and constraints that carry `zite` in their name): they become one `legacy_id` column when the import runner is built (M1).
+- Permission keys in `public.permissions` (`beni.manage`, `scadenze.manage`, `pratiche.set_beneficiary`, `invoices.link_pratica`): data, not names. They are renamed with the permissions screen, together with the policies and functions that use them.
+- Text values such as invoice statuses and stage names (`Emessa`, `Incassata`, `Provvigioni maturate`), user-visible messages, and Italian keys inside the JSON that functions read or return (`cliente`, `fornitore`, `stato`, `nome`, the facet names `bene` and `tipo`).
+- Edge Function folder names (`beni`, `segnalatori`, `aziende-sync`, `allegati-firma`, `fatture-import`, `portale-fatture`) and the one-off scripts in `supabase/scripts`: renamed when the new app calls them.
+- JSON keys the functions now read and return were renamed with their columns: `pratica_id` is `case_id`, `bene_id` is `asset_id`, `bene_name` is `asset_name`.

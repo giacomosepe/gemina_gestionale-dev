@@ -15,7 +15,7 @@ begin
   -- every view of the public schema that is not security_invoker would bypass RLS: the two of this migration must not be among them
   ok := not exists (select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
                      where n.nspname = 'public' and c.relkind = 'v'
-                       and c.relname in ('supplier_invoice_lines_status', 'supplier_invoice_by_bene')
+                       and c.relname in ('supplier_invoice_lines_status', 'supplier_invoice_by_asset')
                        and not coalesce('security_invoker=true' = any(c.reloptions), false));
   failures := failures + (not ok)::int;
   report := report || format(E'%s both supplier views are security_invoker\n', case when ok then 'PASS' else 'FAIL' end);

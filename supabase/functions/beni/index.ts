@@ -1,7 +1,7 @@
 // beni (v3, 2026-11-11; migrations beni_master, bene_documents)
 // v2: each good also carries zite_bene_id (the code the invoice import knows it by; null = placeholder).
 // v3: each good also carries its documents (bene_documents: references to Drive files), its invoiced total and suppliers (from the supplier-invoice
-//     lines assigned to it, view supplier_invoice_by_bene) and its Drive folder; new actions dettaglio, documento, togli_documento, cartella.
+//     lines assigned to it, view supplier_invoice_by_asset) and its Drive folder; new actions dettaglio, documento, togli_documento, cartella.
 // The goods of the investment of a trattativa or a pratica: the main list lives here (EU project), no longer in a JSON text on Zite.
 // Called by the Gestionale's server (Zite endpoint gestisciBeni), never by a browser. Same trust model and secret as allegati-firma:
 // header "x-bridge-secret" = BRIDGE_SECRET_STAFF. Every action acts AS the colleague logged in to Zite (zite_user_id from context.user, never from

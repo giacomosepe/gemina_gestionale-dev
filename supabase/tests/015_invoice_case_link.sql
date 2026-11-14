@@ -37,7 +37,7 @@ begin
   insert into public.partner_members (partner_id, profile_id) values (p_ref, u_ref);
 
   ok := (select count(*) from pg_class c join pg_namespace s on s.oid = c.relnamespace
-          where s.nspname = 'public' and c.relname in ('pratica_payment_status_v', 'review_invoices_v') and 'security_invoker=true' = any(c.reloptions)) = 2
+          where s.nspname = 'public' and c.relname in ('case_payment_status_v', 'review_invoices_v') and 'security_invoker=true' = any(c.reloptions)) = 2
         and private.fully_paid_tolerance_cents() = 1000;
   failures := failures + (not ok)::int;
   report := report || format(E'%s both views are security_invoker; the tolerance setting is 1000 cents\n', case when ok then 'PASS' else 'FAIL' end);
@@ -240,7 +240,7 @@ begin
   report := report || format(E'%s staff cannot link from a browser (no function call, no direct write)\n', case when ok then 'PASS' else 'FAIL' end);
 
   set local role anon;
-  foreach v in array array['pratica_payment_status_v', 'review_invoices_v'] loop
+  foreach v in array array['case_payment_status_v', 'review_invoices_v'] loop
     begin
       execute format('select count(*) from public.%I', v);
       ok := false;
