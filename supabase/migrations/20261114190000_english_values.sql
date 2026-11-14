@@ -131,7 +131,7 @@ begin
   update public.supplier_invoice_allocation_log set action = case action when 'assegnata' then 'assigned' when 'modificata' then 'changed' when 'rimossa' then 'removed' end
    where action in ('assegnata', 'modificata', 'rimossa');
 
-  update public.signature_attachments set signers = array_replace(signers, 'cliente', 'client') where 'cliente' = any (signers);
+  -- the signers ('cliente' becomes 'client') are converted in 20261114190500, where the check constraint and the guard trigger are handled first
 
   -- 4. permission keys: role_permissions follows by on update cascade; the policies that name them are written again ---------------------
   update public.permissions p set key = vm.new_value from vmap vm

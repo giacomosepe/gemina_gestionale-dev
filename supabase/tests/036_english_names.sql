@@ -18,11 +18,11 @@ begin
     select kind, name from (
       select 'table' as kind, n.nspname || '.' || c.relname as name, c.relname as word_source
         from pg_class c join pg_namespace n on n.oid = c.relnamespace
-       where n.nspname in ('public', 'private') and c.relkind in ('r', 'p', 'v', 'm')
+       where n.nspname in ('public', 'private') and c.relkind in ('r', 'p', 'v', 'm', 'c')
       union all
       select 'column', n.nspname || '.' || c.relname || '.' || a.attname, a.attname
         from pg_class c join pg_namespace n on n.oid = c.relnamespace join pg_attribute a on a.attrelid = c.oid and a.attnum > 0 and not a.attisdropped
-       where n.nspname in ('public', 'private') and c.relkind in ('r', 'p', 'v', 'm')
+       where n.nspname in ('public', 'private') and c.relkind in ('r', 'p', 'v', 'm', 'c')
       union all
       select 'function', n.nspname || '.' || p.proname, p.proname
         from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname in ('public', 'private')
