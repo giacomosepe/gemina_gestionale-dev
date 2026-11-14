@@ -8,7 +8,7 @@ set -u
 dir="$(cd "$(dirname "$0")/../tests" && pwd)"
 pattern="${1:-0*.sql}"
 seed="$dir/_seed_staff.sql"
-needs_staff=" 018 021 033 034 035 037 "   # tests that read the first staff / non-staff profile instead of creating their own
+needs_staff=" 018 021 033 034 035 037 040 "   # tests that read the first staff / non-staff profile instead of creating their own
 failed=0; total=0
 for f in "$dir"/$pattern; do
   total=$((total + 1))

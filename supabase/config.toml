@@ -36,3 +36,6 @@ verify_jwt = false
 [functions.segnalatori]
 verify_jwt = false
 
+
+[functions.jobs]
+verify_jwt = false
