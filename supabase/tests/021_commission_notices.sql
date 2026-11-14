@@ -19,7 +19,7 @@ begin
   insert into public.partners (zite_segnalatore_id, name, email, organization_id) values ('t21-a', 'T21 A', 't21-a@example.test', org) returning id into pa;
   insert into public.partners (zite_segnalatore_id, name, email, archived, organization_id) values ('t21-b', 'T21 B', 't21-b@example.test', true, org) returning id into pb;
   insert into public.companies (name, zite_azienda_id, organization_id) values ('T21 X', 't21-x', org) returning id into cx;
-  perform private.sync_pratiche(jsonb_build_array(
+  perform private.sync_cases(jsonb_build_array(
     jsonb_build_object('id', prat, 'code', 'T21-P', 'zite_azienda_id', 't21-x', 'status', 'In lavorazione', 'is_open', true, 'total_fee_cents', 500000, 'removed', false)));
   perform private.sync_referrals(jsonb_build_array(
     jsonb_build_object('id', r_a, 'zite_segnalatore_id', 't21-a', 'zite_azienda_id', 't21-x', 'commission_pct', 10, 'starts_on', '2027-01-01', 'duration_years', null, 'ends_on', null, 'removed', false),
@@ -30,7 +30,7 @@ begin
 
   -- 1. switch off: a paid invoice matures its lines and NOTHING else happens
   update private.settings set value = 'off' where name = 'commission_notices';
-  insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, total_cents, vat_cents, raw, company_id, pratica_id, pratica_link_source) values
+  insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, total_cents, vat_cents, raw, company_id, case_id, case_link_source) values
     ('t21-1', 'invoice', 'D1', 'unpaid', 'Emessa', date '2027-02-10', date '2027-03-10', 122000, 22000, '{}', cx, prat, 'zite');
   select id into d1 from public.qonto_documents where qonto_id = 't21-1';
   update public.qonto_documents set status = 'Incassata', paid_at = date '2027-02-20' where id = d1;
@@ -44,7 +44,7 @@ begin
 
   -- 2. switch on: an invoice turning paid = one message, one bell per team member, one email request, per line
   update private.settings set value = 'on' where name = 'commission_notices';
-  insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, total_cents, vat_cents, raw, company_id, pratica_id, pratica_link_source) values
+  insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, total_cents, vat_cents, raw, company_id, case_id, case_link_source) values
     ('t21-2', 'invoice', 'D2', 'unpaid', 'Emessa', date '2027-03-10', date '2027-04-10', 122000, 22000, '{}', cx, prat, 'zite');
   select id into d2 from public.qonto_documents where qonto_id = 't21-2';
   select id into l_a from public.commissions where invoice_id = d2 and referral_id = r_a;
@@ -89,7 +89,7 @@ begin
 
   -- 4. a line born on an invoice that is already paid sends nothing (Zite never did)
   select count(*) into n from public.commission_notices;
-  insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, paid_at, total_cents, vat_cents, raw, company_id, pratica_id, pratica_link_source) values
+  insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, paid_at, total_cents, vat_cents, raw, company_id, case_id, case_link_source) values
     ('t21-3', 'invoice', 'D3', 'paid', 'Incassata', date '2027-04-10', date '2027-05-10', date '2027-04-12', 122000, 22000, '{}', cx, prat, 'zite');
   select id into d3 from public.qonto_documents where qonto_id = 't21-3';
   ok := (select count(*) from public.commissions where invoice_id = d3 and matured_at is not null) = 2 and (select count(*) from public.commission_notices) = n;
@@ -98,7 +98,7 @@ begin
 
   -- 5. a maturation that happened while the switch was off is never notified later
   update private.settings set value = 'off' where name = 'commission_notices';
-  insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, total_cents, vat_cents, raw, company_id, pratica_id, pratica_link_source) values
+  insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, total_cents, vat_cents, raw, company_id, case_id, case_link_source) values
     ('t21-4', 'invoice', 'D4', 'unpaid', 'Emessa', date '2027-04-15', date '2027-05-15', 122000, 22000, '{}', cx, prat, 'zite');
   select id into d4 from public.qonto_documents where qonto_id = 't21-4';
   select count(*) into n from public.commission_notices;
@@ -113,7 +113,7 @@ begin
 
   -- 6. a failing notice never breaks the save: it is logged, the line still matures
   alter table public.commission_notices add constraint t21_always_fails check (false) not valid;
-  insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, total_cents, vat_cents, raw, company_id, pratica_id, pratica_link_source) values
+  insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, total_cents, vat_cents, raw, company_id, case_id, case_link_source) values
     ('t21-5', 'invoice', 'D5', 'unpaid', 'Emessa', date '2027-04-25', date '2027-05-25', 122000, 22000, '{}', cx, prat, 'zite');
   select id into d5 from public.qonto_documents where qonto_id = 't21-5';
   select count(*) into n from public.commission_notices;

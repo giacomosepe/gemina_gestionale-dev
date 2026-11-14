@@ -9,11 +9,11 @@
 //
 // A) PUBBLICHE, dal browser del cliente. Si autenticano con il codice del link (campo "token"; nel database c'è solo il suo sha256).
 //    info     { token }                              -> { cliente, pratiche: [{id, code, title}] }  (solo pratiche aperte del cliente)
-//    prepara  { token, pratica_id, files: [{name, size}] } -> { files: [{id, name, upload_url}] }   (URL firmati di caricamento, max 100 file)
+//    prepara  { token, case_id, files: [{name, size}] } -> { files: [{id, name, upload_url}] }   (URL firmati di caricamento, max 100 file)
 //    conferma { token, file_ids }                    -> { confermati, mancanti, rifiutati }   (il file è nel bucket e i primi byte corrispondono all'estensione)
 //
 // B) DEL GESTIONALE, da server a server. Header "x-bridge-secret" = BRIDGE_SECRET_STAFF (lo stesso di fatture-import).
-//    da_trasferire { pratica_id?, limit? }           -> { totale, files: [{id, pratica_id, file_name, size_bytes, download_url}] }
+//    da_trasferire { case_id?, limit? }           -> { totale, files: [{id, case_id, file_name, size_bytes, download_url}] }
 //    trasferito    { file_id, drive_file_id }        -> segna il file come copiato su Drive e lo toglie dal bucket
 //    fallito       { file_id, error }                -> annota l'errore (il file resta da trasferire)
 //    crea_link     { zite_user_id, company_id, label?, days? }  -> { portal_id, token, expires_at }  (come il collega: public.create_upload_portal)
@@ -157,7 +157,7 @@ async function primiByte(path: string): Promise<Uint8Array | null> {
 async function info(p: Record<string, unknown>, ctx: Ctx) {
   const portale = await linkValido(p.token, ctx);
   const pratiche = await sql`
-    select id, code, title from public.pratiche
+    select id, code, title from public.cases
      where company_id = ${portale.company_id} and removed_at is null and is_open
      order by created_at desc limit 200`;
   return { cliente: portale.company_name, estensioni: EXTENSIONS, max_bytes: MAX_FILE_BYTES, pratiche };
@@ -165,9 +165,9 @@ async function info(p: Record<string, unknown>, ctx: Ctx) {
 
 async function prepara(p: Record<string, unknown>, ctx: Ctx) {
   const portale = await linkValido(p.token, ctx);
-  const pratica = oneUuid(p.pratica_id, "pratica_id");
+  const pratica = oneUuid(p.case_id, "case_id");
   if (!Array.isArray(p.files) || p.files.length === 0 || p.files.length > MAX_FILES_PER_CALL) throw new PortalError(400, "invalid_files");
-  const [prat] = await sql`select id from public.pratiche where id = ${pratica} and company_id = ${portale.company_id} and removed_at is null and is_open`;
+  const [prat] = await sql`select id from public.cases where id = ${pratica} and company_id = ${portale.company_id} and removed_at is null and is_open`;
   if (!prat) throw new PortalError(404, "pratica_non_trovata");
   const [{ n }] = await sql`select count(*)::int as n from public.upload_portal_files where portal_id = ${portale.id} and created_at > now() - interval '1 day'`;
   if (n + p.files.length > MAX_FILES_PER_DAY) throw new PortalError(429, "troppi_file");
@@ -188,7 +188,7 @@ async function prepara(p: Record<string, unknown>, ctx: Ctx) {
       out.push({ id: "", name, error: "errore_interno" });
       continue;
     }
-    await sql`insert into public.upload_portal_files (id, organization_id, portal_id, company_id, pratica_id, file_name, storage_path, size_bytes)
+    await sql`insert into public.upload_portal_files (id, organization_id, portal_id, company_id, case_id, file_name, storage_path, size_bytes)
               values (${id}, ${portale.organization_id}, ${portale.id}, ${portale.company_id}, ${pratica}, ${name}, ${path}, ${size})`;
     out.push({ id, name, upload_url: data.signedUrl });
   }
@@ -227,17 +227,17 @@ async function conferma(p: Record<string, unknown>, ctx: Ctx) {
 
 // ---------- B) del Gestionale
 async function daTrasferire(p: Record<string, unknown>) {
-  const pratica = p.pratica_id == null ? null : oneUuid(p.pratica_id, "pratica_id");
+  const pratica = p.case_id == null ? null : oneUuid(p.case_id, "case_id");
   const limit = Number.isSafeInteger(p.limit) ? Math.min(Math.max(Number(p.limit), 1), 25) : 10;
-  const [{ n }] = await sql`select count(*)::int as n from public.upload_portal_files where status = 'uploaded' and (${pratica}::uuid is null or pratica_id = ${pratica}::uuid)`;
-  const righe = await sql`select id, pratica_id, company_id, file_name, size_bytes, storage_path from public.upload_portal_files
-                           where status = 'uploaded' and (${pratica}::uuid is null or pratica_id = ${pratica}::uuid)
+  const [{ n }] = await sql`select count(*)::int as n from public.upload_portal_files where status = 'uploaded' and (${pratica}::uuid is null or case_id = ${pratica}::uuid)`;
+  const righe = await sql`select id, case_id, company_id, file_name, size_bytes, storage_path from public.upload_portal_files
+                           where status = 'uploaded' and (${pratica}::uuid is null or case_id = ${pratica}::uuid)
                            order by uploaded_at limit ${limit}`;
   const files = [];
   for (const r of righe) {
     const { data, error } = await admin.storage.from(BUCKET).createSignedUrl(r.storage_path, 3600, { download: r.file_name });
     if (error || !data?.signedUrl) { console.error("portale-fatture signed url", error?.message ?? ""); continue; }
-    files.push({ id: r.id, pratica_id: r.pratica_id, company_id: r.company_id, file_name: r.file_name, size_bytes: r.size_bytes, download_url: data.signedUrl });
+    files.push({ id: r.id, case_id: r.case_id, company_id: r.company_id, file_name: r.file_name, size_bytes: r.size_bytes, download_url: data.signedUrl });
   }
   return { totale: n, files };
 }

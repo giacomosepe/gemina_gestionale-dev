@@ -37,7 +37,7 @@
 // 2026-10-22 (v8): start_partner_conversation also takes zite_trattativa_id (the portal lets a referrer say a message is about
 // one of their trattative).
 // 2026-10-23 (v9, migration pratiche_mirror, PRDDISC-11): actions sync_pratica and resync_pratiche (staff secret): the Gestionale's
-// server keeps public.pratiche, a read-only mirror of the Zite pratiche (Zite sends the computed total fee and is_open; nothing is
+// server keeps public.cases, a read-only mirror of the Zite pratiche (Zite sends the computed total fee and is_open; nothing is
 // recomputed here). resync_pratiche is the repair: it sends every pratica and marks the ones Zite no longer has as removed.
 // 2026-10-23 (v10, migration referrals_mirror, PRDDISC-13): actions sync_referral and resync_referrals (staff secret): the same for the Zite
 // Segnalazioni (segnalatore x azienda, percentage, validity) into public.referrals; a deleted one is marked removed, never deleted.
@@ -413,7 +413,7 @@ function parsePratica(p: Record<string, unknown>) {
 async function syncPratica(audience: Audience, p: Record<string, unknown>) {
   if (audience !== "staff") throw new BridgeError(403, "staff_only");
   const row = parsePratica(p);
-  const [r] = await sql`select private.sync_pratiche(${JSON.stringify([row])}::text::jsonb, false) as result`;
+  const [r] = await sql`select private.sync_cases(${JSON.stringify([row])}::text::jsonb, false) as result`;
   return r.result;
 }
 
@@ -423,7 +423,7 @@ async function resyncPratiche(audience: Audience, p: Record<string, unknown>) {
   if (audience !== "staff") throw new BridgeError(403, "staff_only");
   if (!Array.isArray(p.pratiche) || p.pratiche.length > 150) throw new BridgeError(400, "invalid_pratiche");
   const rows = p.pratiche.map((x) => parsePratica(x as Record<string, unknown>));
-  const [r] = await sql`select private.sync_pratiche(${JSON.stringify(rows)}::text::jsonb, true) as result`;
+  const [r] = await sql`select private.sync_cases(${JSON.stringify(rows)}::text::jsonb, true) as result`;
   return r.result;
 }
 

@@ -34,7 +34,7 @@ begin
   insert into public.company_members (company_id, profile_id) values (cclient, u_client);
   update public.profiles set role = 'client' where id = u_client;
 
-  perform private.sync_pratiche(jsonb_build_array(jsonb_build_object('id', prat, 'code', 'T17-P1', 'zite_azienda_id', 't17-x', 'status', 'In lavorazione', 'is_open', true, 'total_fee_cents', 500000, 'removed', false)));
+  perform private.sync_cases(jsonb_build_array(jsonb_build_object('id', prat, 'code', 'T17-P1', 'zite_azienda_id', 't17-x', 'status', 'In lavorazione', 'is_open', true, 'total_fee_cents', 500000, 'removed', false)));
   perform private.sync_referrals(jsonb_build_array(
     jsonb_build_object('id', r_ax, 'zite_segnalatore_id', 't17-a', 'zite_azienda_id', 't17-x', 'commission_pct', 20, 'starts_on', '2027-01-01', 'duration_years', null, 'ends_on', null, 'removed', false),
     jsonb_build_object('id', r_ay, 'zite_segnalatore_id', 't17-a', 'zite_azienda_id', 't17-y', 'commission_pct', 20, 'starts_on', '2026-01-01', 'duration_years', 1, 'ends_on', '2026-12-31', 'removed', false),
@@ -44,7 +44,7 @@ begin
     jsonb_build_object('id', r_bx, 'zite_segnalatore_id', 't17-b', 'zite_azienda_id', 't17-x', 'commission_pct', 10, 'starts_on', '2027-01-01', 'duration_years', null, 'ends_on', null, 'removed', true),
     jsonb_build_object('id', r_cx, 'zite_segnalatore_id', 't17-c', 'zite_azienda_id', 't17-x', 'commission_pct', 5, 'starts_on', '2027-01-01', 'duration_years', null, 'ends_on', null, 'removed', false)));
 
-  insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, paid_at, total_cents, vat_cents, raw, company_id, pratica_id, pratica_link_source, removed_at) values
+  insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, paid_at, total_cents, vat_cents, raw, company_id, case_id, case_link_source, removed_at) values
     -- X: referral of A (and C) active from 2027-01-01
     ('t17-x-paid',   'invoice', 'X1', 'paid',     'Incassata', date '2027-02-10', date '2027-03-10', date '2027-03-01', 122000, 22000, '{}', cx, prat, 'zite', null),
     ('t17-x-nodate', 'invoice', 'X2', 'paid',     'Incassata', date '2027-02-11', date '2027-03-11', null,              122000, 22000, '{}', cx, null, null, null),
@@ -64,7 +64,7 @@ begin
 
   -- structure: no amount in the answer; nothing changed on the tables
   select string_agg(a, ',' order by o) into cols from unnest((select proargnames from pg_proc where oid = 'public.partner_payments()'::regprocedure)) with ordinality t(a, o);
-  ok := cols = 'invoice_id,invoice_number,company_name,pratica_code,paid_at'
+  ok := cols = 'invoice_id,invoice_number,company_name,case_code,paid_at'
         and has_function_privilege('authenticated', 'public.partner_payments()', 'execute')
         and not has_function_privilege('anon', 'public.partner_payments()', 'execute');
   failures := failures + (not ok)::int;
@@ -83,15 +83,15 @@ begin
   failures := failures + (not ok)::int;
   report := report || format(E'%s A sees only the paid invoices of A''s active referrals: W1, X1, Z2 (got %s)\n', case when ok then 'PASS' else 'FAIL' end, v);
   select * into r from public.partner_payments() where invoice_number = 'X1';
-  ok := r.company_name = 'T17 X' and r.pratica_code = 'T17-P1' and r.paid_at = date '2027-03-01'
-        and (select pratica_code is null from public.partner_payments() where invoice_number = 'W1');
+  ok := r.company_name = 'T17 X' and r.case_code = 'T17-P1' and r.paid_at = date '2027-03-01'
+        and (select case_code is null from public.partner_payments() where invoice_number = 'W1');
   failures := failures + (not ok)::int;
   report := report || format(E'%s a row carries company, pratica code (null when unlinked) and the payment date\n', case when ok then 'PASS' else 'FAIL' end);
   ok := not exists (select 1 from public.partner_payments() where invoice_number in ('X2', 'X3', 'X4', 'X5', 'X6', 'X7', 'X8', 'Y1', 'Z1', 'N1'));
   failures := failures + (not ok)::int;
   report := report || format(E'%s never: paid without date, unpaid, overdue, cancelled, credit note, removed in Qonto, before the referral started, after it ended, no company\n', case when ok then 'PASS' else 'FAIL' end);
   ok := (select count(*) from public.qonto_documents) = 0 and (select count(*) from public.referrals) = 0 and (select count(*) from public.invoice_status_v) = 0
-        and (select count(*) from public.invoice_payments_v) = 0 and (select count(*) from public.pratica_payment_status_v) = 0 and (select count(*) from public.review_invoices_v) = 0;
+        and (select count(*) from public.invoice_payments_v) = 0 and (select count(*) from public.case_payment_status_v) = 0 and (select count(*) from public.review_invoices_v) = 0;
   begin insert into public.qonto_documents (qonto_id, kind, status_qonto, status, issue_date, total_cents, vat_cents, raw) values ('t17-hack', 'invoice', 'paid', 'Incassata', date '2027-01-01', 1, 0, '{}'); ok := false;
   exception when insufficient_privilege then null; end;
   failures := failures + (not ok)::int;

@@ -24,7 +24,7 @@ begin
   insert into public.companies (name, zite_azienda_id, organization_id) values ('T19 X', 't19-x', org) returning id into cx;
   insert into public.companies (name, zite_azienda_id, organization_id) values ('T19 Y', 't19-y', org) returning id into cy;
   insert into public.companies (name, zite_azienda_id, organization_id) values ('T19 Z', 't19-z', org) returning id into cz;
-  perform private.sync_pratiche(jsonb_build_array(
+  perform private.sync_cases(jsonb_build_array(
     jsonb_build_object('id', prat_x, 'code', 'T19-X', 'zite_azienda_id', 't19-x', 'status', 'In lavorazione', 'is_open', true, 'total_fee_cents', 500000, 'removed', false),
     jsonb_build_object('id', prat_y, 'code', 'T19-Y', 'zite_azienda_id', 't19-y', 'status', 'In lavorazione', 'is_open', true, 'total_fee_cents', 500000, 'removed', false),
     jsonb_build_object('id', prat_z, 'code', 'T19-Z', 'zite_azienda_id', 't19-z', 'status', 'In lavorazione', 'is_open', true, 'total_fee_cents', 500000, 'removed', false)));
@@ -34,7 +34,7 @@ begin
     jsonb_build_object('id', r_b, 'zite_segnalatore_id', 't19-b', 'zite_azienda_id', 't19-x', 'commission_pct', 5, 'starts_on', '2027-01-01', 'duration_years', null, 'ends_on', '2027-02-28', 'removed', false)));
 
   -- 1. paid invoice, one active referral (B ended before it): one line, 10% of the whole net amount, matured at creation
-  insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, paid_at, total_cents, vat_cents, raw, company_id, pratica_id, pratica_link_source) values
+  insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, paid_at, total_cents, vat_cents, raw, company_id, case_id, case_link_source) values
     ('t19-1', 'invoice', 'D1', 'paid', 'Incassata', date '2027-03-01', date '2027-03-31', date '2027-03-10', 122000, 22000, '{}', cx, prat_x, 'zite');
   select id into d1 from public.qonto_documents where qonto_id = 't19-1';
   select count(*) into n from public.commissions where invoice_id = d1;
@@ -46,7 +46,7 @@ begin
   report := report || format(E'%s paid invoice + one active referral = one line (10%% of the whole net amount, no exclusion); the referral that ended before is left out; matured_at = created_at (born paid) (%s lines)\n', case when ok then 'PASS' else 'FAIL' end, n);
 
   -- 2. unpaid invoice in February: both referrals were active: two lines, not matured
-  insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, total_cents, vat_cents, raw, company_id, pratica_id, pratica_link_source) values
+  insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, total_cents, vat_cents, raw, company_id, case_id, case_link_source) values
     ('t19-2', 'invoice', 'D2', 'unpaid', 'Emessa', date '2027-02-10', date '2027-03-10', 122000, 22000, '{}', cx, prat_x, 'zite');
   select id into d2 from public.qonto_documents where qonto_id = 't19-2';
   ok := (select count(*) from public.commissions where invoice_id = d2) = 2 and (select count(*) from public.commissions where invoice_id = d2 and matured_at is null) = 2
@@ -57,7 +57,7 @@ begin
   -- 3. the referral's percentage changes: existing lines keep theirs, a new invoice takes the new one
   perform private.sync_referrals(jsonb_build_array(
     jsonb_build_object('id', r_a, 'zite_segnalatore_id', 't19-a', 'zite_azienda_id', 't19-x', 'commission_pct', 20, 'starts_on', '2027-01-01', 'duration_years', null, 'ends_on', null, 'removed', false)));
-  insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, total_cents, vat_cents, raw, company_id, pratica_id, pratica_link_source) values
+  insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, total_cents, vat_cents, raw, company_id, case_id, case_link_source) values
     ('t19-3', 'invoice', 'D3', 'unpaid', 'Emessa', date '2027-03-05', date '2027-04-05', 244000, 44000, '{}', cx, prat_x, 'zite');
   select id into d3 from public.qonto_documents where qonto_id = 't19-3';
   ok := (select pct from public.commissions where invoice_id = d1) = 10 and (select pct from public.commissions where invoice_id = d2 and referral_id = r_a) = 10
@@ -66,7 +66,7 @@ begin
   report := report || format(E'%s changing the referral percentage (10 -> 20) leaves existing lines at 10%%; the next invoice gets 20%%\n', case when ok then 'PASS' else 'FAIL' end);
 
   -- 4. credit note, cancelled invoice, invoice with no pratica, invoice with no company: no lines
-  insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, paid_at, total_cents, vat_cents, raw, company_id, pratica_id, pratica_link_source) values
+  insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, paid_at, total_cents, vat_cents, raw, company_id, case_id, case_link_source) values
     ('t19-cn', 'credit_note', 'N1', 'credit_note', 'Incassata', date '2027-03-06', date '2027-03-06', null, -12200, -2200, '{}', cx, prat_x, 'zite'),
     ('t19-cx', 'invoice', 'C1', 'canceled', 'Annullata', date '2027-03-06', date '2027-04-06', null, 122000, 22000, '{}', cx, prat_x, 'zite'),
     ('t19-np', 'invoice', 'P0', 'paid', 'Incassata', date '2027-03-06', date '2027-04-06', date '2027-03-07', 122000, 22000, '{}', cx, null, 'manual'),
@@ -112,7 +112,7 @@ begin
   report := report || format(E'%s cancelling an invoice deletes its free lines and keeps the invoiced one\n', case when ok then 'PASS' else 'FAIL' end);
 
   -- 9. referral changes: a new referral creates lines on that company's invoices; ending or removing it deletes the free ones, keeps the received ones
-  insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, total_cents, vat_cents, raw, company_id, pratica_id, pratica_link_source) values
+  insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, total_cents, vat_cents, raw, company_id, case_id, case_link_source) values
     ('t19-5', 'invoice', 'D5', 'unpaid', 'Emessa', date '2027-04-01', date '2027-05-01', 122000, 22000, '{}', cy, prat_y, 'zite'),
     ('t19-5b', 'invoice', 'D5b', 'unpaid', 'Emessa', date '2027-04-02', date '2027-05-02', 122000, 22000, '{}', cy, prat_y, 'zite');
   select id into d5 from public.qonto_documents where qonto_id = 't19-5';
@@ -130,7 +130,7 @@ begin
   -- 10. a failing rebuild is logged and the invoice still saves (percentage above 100 breaks the table check)
   perform private.sync_referrals(jsonb_build_array(
     jsonb_build_object('id', r_d, 'zite_segnalatore_id', 't19-b', 'zite_azienda_id', 't19-z', 'commission_pct', 150, 'starts_on', '2027-01-01', 'duration_years', null, 'ends_on', null, 'removed', false)));
-  insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, total_cents, vat_cents, raw, company_id, pratica_id, pratica_link_source) values
+  insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, total_cents, vat_cents, raw, company_id, case_id, case_link_source) values
     ('t19-6', 'invoice', 'D6', 'unpaid', 'Emessa', date '2027-04-03', date '2027-05-03', 122000, 22000, '{}', cz, prat_z, 'zite');
   select id into d6 from public.qonto_documents where qonto_id = 't19-6';
   ok := d6 is not null and (select count(*) from public.commissions where invoice_id = d6) = 0

@@ -26,7 +26,7 @@ begin
   insert into public.company_members (company_id, profile_id) values (cclient, u_client);
   update public.profiles set role = 'client' where id = u_client;
 
-  insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, paid_at, total_cents, vat_cents, raw, company_id, pratica_link_source) values
+  insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, paid_at, total_cents, vat_cents, raw, company_id, case_link_source) values
     ('t20-theo', 'invoice', 'T1', 'unpaid', 'Emessa',    date '2027-02-01', date '2027-03-01', null,              122000, 22000, '{}', cx, 'manual'),
     ('t20-mat',  'invoice', 'T2', 'paid',   'Incassata', date '2027-02-02', date '2027-03-02', date '2027-02-20', 122000, 22000, '{}', cx, 'manual'),
     ('t20-mat2', 'invoice', 'T3', 'paid',   'Incassata', date '2027-02-03', date '2027-03-03', date '2027-02-21', 122000, 22000, '{}', cx, 'manual'),

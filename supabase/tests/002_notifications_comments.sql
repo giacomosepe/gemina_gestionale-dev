@@ -114,7 +114,7 @@ begin
   perform set_config('request.jwt.claims', json_build_object('sub', u_s1, 'role', 'authenticated')::text, true);
   set local role authenticated;
   insert into public.comments (record_type, record_zite_id, record_label, body, mentions)
-    values ('pratica', 'zite-pratica-1', 'PR-2026-001 Test', 'please check @s2', array[u_s2, u_ref])
+    values ('case', 'zite-pratica-1', 'PR-2026-001 Test', 'please check @s2', array[u_s2, u_ref])
     returning id into c_top;
   reset role;
 
@@ -128,10 +128,10 @@ begin
   perform set_config('request.jwt.claims', json_build_object('sub', u_s2, 'role', 'authenticated')::text, true);
   set local role authenticated;
   insert into public.comments (record_type, record_zite_id, parent_id, body)
-    values ('pratica', 'zite-pratica-1', c_top, 'done') returning id into c_reply;
+    values ('case', 'zite-pratica-1', c_top, 'done') returning id into c_reply;
   begin
     insert into public.comments (record_type, record_zite_id, parent_id, body)
-      values ('pratica', 'zite-pratica-1', c_reply, 'reply to a reply');
+      values ('case', 'zite-pratica-1', c_reply, 'reply to a reply');
     ok := false;
   exception when others then ok := true; end;
   failures := failures + (not ok)::int;
@@ -157,9 +157,9 @@ begin
   report := report || format(E'%s staff read all comments on the record (expect 2, got %s)\n', case when ok then 'PASS' else 'FAIL' end, n);
   begin
     for i in 1..19 loop
-      insert into public.comments (record_type, record_zite_id, body) values ('azienda', 'zite-az-1', 'c ' || i);
+      insert into public.comments (record_type, record_zite_id, body) values ('company', 'zite-az-1', 'c ' || i);
     end loop;
-    insert into public.comments (record_type, record_zite_id, body) values ('azienda', 'zite-az-1', 'one too many');
+    insert into public.comments (record_type, record_zite_id, body) values ('company', 'zite-az-1', 'one too many');
     ok := false;
   exception when sqlstate 'P0429' then ok := true; when others then ok := false; end;
   failures := failures + (not ok)::int;
@@ -172,7 +172,7 @@ begin
   ok := n = 0; failures := failures + (not ok)::int;
   report := report || format(E'%s referrers never see comments (expect 0, got %s)\n', case when ok then 'PASS' else 'FAIL' end, n);
   begin
-    insert into public.comments (record_type, record_zite_id, body) values ('pratica', 'zite-pratica-1', 'from referrer');
+    insert into public.comments (record_type, record_zite_id, body) values ('case', 'zite-pratica-1', 'from referrer');
     ok := false;
   exception when others then ok := true; end;
   failures := failures + (not ok)::int;

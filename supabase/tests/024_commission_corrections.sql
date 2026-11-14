@@ -22,7 +22,7 @@ begin
   insert into public.companies (name, zite_azienda_id, organization_id) values ('T24 client', 't24-client', org) returning id into cclient;
   insert into public.company_members (company_id, profile_id) values (cclient, u_client);
   update public.profiles set role = 'client' where id = u_client;
-  insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, paid_at, total_cents, vat_cents, raw, company_id, pratica_link_source) values
+  insert into public.qonto_documents (qonto_id, kind, number, status_qonto, status, issue_date, due_date, paid_at, total_cents, vat_cents, raw, company_id, case_link_source) values
     ('t24-mat',  'invoice', 'C1', 'paid', 'Incassata', date '2027-02-02', date '2027-03-02', date '2027-02-20', 122000, 22000, '{}', cx, 'manual'),
     ('t24-inv',  'invoice', 'C2', 'paid', 'Incassata', date '2027-02-03', date '2027-03-03', date '2027-02-21', 122000, 22000, '{}', cx, 'manual'),
     ('t24-rec',  'invoice', 'C3', 'paid', 'Incassata', date '2027-02-04', date '2027-03-04', date '2027-02-22', 122000, 22000, '{}', cx, 'manual'),

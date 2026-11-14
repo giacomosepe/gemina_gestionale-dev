@@ -8,20 +8,20 @@
 // the browser): role authenticated with that staff profile, so the RLS (staff only) and the triggers of the migration apply.
 //
 // Actions:
-//   elenco { zite_user_id, pratica_id?, trattativa_id?, trattative?: [zite ids] }
+//   elenco { zite_user_id, case_id?, trattativa_id?, trattative?: [zite ids] }
 //          On a pratica: the goods born on its trattative pass to it first (when the pratica is on Supabase), then its goods. A placeholder made by the
 //          invoice import (no zite_bene_id) is listed only when invoices are assigned to it. On a trattativa: the goods born on it.
-//          -> { beni: [{ id, name, supplier, order_date, ordered, position, pratica_id, trattativa_id, allocations, zite_bene_id, values: {dato_id: value} }], pratica_su_supabase }
-//   salva  { zite_user_id, bene: { id?, pratica_id?, trattativa_id?, name?, supplier?, order_date?, ordered? } }
+//          -> { beni: [{ id, name, supplier, order_date, ordered, position, case_id, trattativa_id, allocations, zite_bene_id, values: {data_request_id: value} }], pratica_su_supabase }
+//   salva  { zite_user_id, bene: { id?, case_id?, trattativa_id?, name?, supplier?, order_date?, ordered? } }
 //          new (no id): on the pratica or the trattativa; it is «managed» (zite_bene_id = its id), so the import keeps it and puts the placeholder aside.
 //          existing: the fields sent change; a placeholder that is edited becomes managed.  -> { bene }
 //   togli  { zite_user_id, id }    put aside (removed_at); refused while invoices are assigned to it  -> { ok }
-//   valore { zite_user_id, bene_id, dato_id, value | null }   one catalogue value of a good (null clears it)  -> { ok }
+//   valore { zite_user_id, asset_id, data_request_id, value | null }   one catalogue value of a good (null clears it)  -> { ok }
 //   dettaglio { zite_user_id, id }   one good with everything above plus its invoice lines  -> { bene, righe: [{ invoice_id, supplier_name, number, issue_date,
 //          doc_type, description, period_from, period_to, share_pct, amount }] }
-//   documento { zite_user_id, bene_id, dato_id, name, drive_file_id? | link?, valid_until? }   a document of the good (the file is on Drive)  -> { ok, id }
+//   documento { zite_user_id, asset_id, data_request_id, name, drive_file_id? | link?, valid_until? }   a document of the good (the file is on Drive)  -> { ok, id }
 //   togli_documento { zite_user_id, id }   put aside  -> { ok }
-//   cartella { zite_user_id, bene_id, drive_folder }   the Drive folder of the good («Beni/<name>»)  -> { ok }
+//   cartella { zite_user_id, asset_id, drive_folder }   the Drive folder of the good («Beni/<name>»)  -> { ok }
 
 import postgres from "npm:postgres@3.4.5";
 
@@ -87,48 +87,48 @@ async function conValori(tx: postgres.TransactionSql, righe: Riga[]) {
   const ids = righe.map((r) => r.id);
   const [valori, documenti, fatture] = ids.length
     ? await Promise.all([
-      tx`select bene_id, dato_id, value from public.bene_values where bene_id = any(${ids}::uuid[])`,
-      tx`select id, bene_id, dato_id, name, drive_file_id, link, to_char(valid_until, 'YYYY-MM-DD') as valid_until
-           from public.bene_documents where bene_id = any(${ids}::uuid[]) and removed_at is null order by created_at`,
-      tx`select bene_id, coalesce(sum(amount), 0)::text as invoiced, array_remove(array_agg(distinct supplier_name), null) as suppliers
-           from public.supplier_invoice_by_bene where bene_id = any(${ids}::uuid[]) group by bene_id`,
+      tx`select asset_id, data_request_id, value from public.asset_values where asset_id = any(${ids}::uuid[])`,
+      tx`select id, asset_id, data_request_id, name, drive_file_id, link, to_char(valid_until, 'YYYY-MM-DD') as valid_until
+           from public.asset_documents where asset_id = any(${ids}::uuid[]) and removed_at is null order by created_at`,
+      tx`select asset_id, coalesce(sum(amount), 0)::text as invoiced, array_remove(array_agg(distinct supplier_name), null) as suppliers
+           from public.supplier_invoice_by_asset where asset_id = any(${ids}::uuid[]) group by asset_id`,
     ])
     : [[], [], []];
   return righe.map((r) => ({
     id: r.id, name: r.name, supplier: r.supplier_hint, order_date: r.order_date, ordered: r.ordered, position: r.position,
-    pratica_id: r.pratica_id, trattativa_id: r.trattativa_zite_id, allocations: Number(r.allocations ?? 0), zite_bene_id: r.zite_bene_id ?? null,
+    case_id: r.case_id, trattativa_id: r.trattativa_zite_id, allocations: Number(r.allocations ?? 0), zite_bene_id: r.zite_bene_id ?? null,
     drive_folder: r.drive_folder ?? null,
-    values: Object.fromEntries(valori.filter((v) => v.bene_id === r.id).map((v) => [v.dato_id, v.value])),
-    documents: documenti.filter((d) => d.bene_id === r.id).map(({ bene_id: _b, ...d }) => d),
-    invoiced: fatture.find((f) => f.bene_id === r.id)?.invoiced ?? "0",
-    suppliers: fatture.find((f) => f.bene_id === r.id)?.suppliers ?? [],
+    values: Object.fromEntries(valori.filter((v) => v.asset_id === r.id).map((v) => [v.data_request_id, v.value])),
+    documents: documenti.filter((d) => d.asset_id === r.id).map(({ asset_id: _b, ...d }) => d),
+    invoiced: fatture.find((f) => f.asset_id === r.id)?.invoiced ?? "0",
+    suppliers: fatture.find((f) => f.asset_id === r.id)?.suppliers ?? [],
   }));
 }
 
 const COLONNE = (tx: postgres.TransactionSql) => tx`b.id, b.name, b.supplier_hint, to_char(b.order_date, 'YYYY-MM-DD') as order_date, b.ordered, b.position,
-  b.pratica_id, b.trattativa_zite_id, (select count(*) from public.supplier_invoice_allocations a where a.bene_id = b.id) as allocations, b.zite_bene_id, b.drive_folder`;
+  b.case_id, b.trattativa_zite_id, (select count(*) from public.supplier_invoice_allocations a where a.asset_id = b.id) as allocations, b.zite_bene_id, b.drive_folder`;
 
 async function elenco(p: Record<string, unknown>) {
-  const pratica = optUuid(p.pratica_id, "pratica_id");
+  const pratica = optUuid(p.case_id, "case_id");
   const trattativa = optZiteId(p.trattativa_id, "trattativa_id");
   if (!pratica && !trattativa) throw new BeniError(400, "pratica_or_trattativa");
   const trattative = Array.isArray(p.trattative) ? p.trattative.slice(0, 20).map((t) => ziteId(t, "trattative")) : [];
   return await comeCollega(p, async (tx) => {
     if (pratica) {
-      const [su] = await tx`select id from public.pratiche where id = ${pratica}`;
+      const [su] = await tx`select id from public.cases where id = ${pratica}`;
       if (su && trattative.length) {
-        await tx`update public.beni set pratica_id = ${pratica}
-                  where pratica_id is null and removed_at is null and trattativa_zite_id = any(${trattative}::text[])`;
+        await tx`update public.assets set case_id = ${pratica}
+                  where case_id is null and removed_at is null and trattativa_zite_id = any(${trattative}::text[])`;
       }
       const righe = su
-        ? await tx`select ${COLONNE(tx)} from public.beni b where b.pratica_id = ${pratica} and b.removed_at is null order by b.position, b.created_at`
+        ? await tx`select ${COLONNE(tx)} from public.assets b where b.case_id = ${pratica} and b.removed_at is null order by b.position, b.created_at`
         : trattative.length
-          ? await tx`select ${COLONNE(tx)} from public.beni b where b.pratica_id is null and b.removed_at is null and b.trattativa_zite_id = any(${trattative}::text[]) order by b.position, b.created_at`
+          ? await tx`select ${COLONNE(tx)} from public.assets b where b.case_id is null and b.removed_at is null and b.trattativa_zite_id = any(${trattative}::text[]) order by b.position, b.created_at`
           : [];
       const visibili = (righe as unknown as Riga[]).filter((r) => r.zite_bene_id != null || Number(r.allocations) > 0);
       return { beni: await conValori(tx, visibili), pratica_su_supabase: !!su };
     }
-    const righe = await tx`select ${COLONNE(tx)} from public.beni b where b.trattativa_zite_id = ${trattativa} and b.removed_at is null order by b.position, b.created_at`;
+    const righe = await tx`select ${COLONNE(tx)} from public.assets b where b.trattativa_zite_id = ${trattativa} and b.removed_at is null order by b.position, b.created_at`;
     return { beni: await conValori(tx, righe as unknown as Riga[]), pratica_su_supabase: false };
   });
 }
@@ -144,28 +144,28 @@ async function salva(p: Record<string, unknown>) {
   return await comeCollega(p, async (tx) => {
     let riga: Riga | undefined;
     if (!id) {
-      const pratica = optUuid(b.pratica_id, "pratica_id");
+      const pratica = optUuid(b.case_id, "case_id");
       const trattativa = optZiteId(b.trattativa_id, "trattativa_id");
       if (!pratica && !trattativa) throw new BeniError(400, "pratica_or_trattativa");
       if (pratica) {
-        const [su] = await tx`select id from public.pratiche where id = ${pratica}`;
+        const [su] = await tx`select id from public.cases where id = ${pratica}`;
         if (!su) throw new BeniError(409, "pratica_non_su_supabase");
       }
       const [{ pos }] = pratica
-        ? await tx`select coalesce(max(position), 0) + 1 as pos from public.beni where pratica_id = ${pratica}`
-        : await tx`select coalesce(max(position), 0) + 1 as pos from public.beni where trattativa_zite_id = ${trattativa}`;
-      [riga] = await tx`insert into public.beni (pratica_id, trattativa_zite_id, name, supplier_hint, order_date, ordered, position)
+        ? await tx`select coalesce(max(position), 0) + 1 as pos from public.assets where case_id = ${pratica}`
+        : await tx`select coalesce(max(position), 0) + 1 as pos from public.assets where trattativa_zite_id = ${trattativa}`;
+      [riga] = await tx`insert into public.assets (case_id, trattativa_zite_id, name, supplier_hint, order_date, ordered, position)
                          values (${pratica}, ${trattativa}, ${name ?? "Nuovo bene"}, ${supplier ?? null}, ${orderDate ?? null}, ${b.ordered === true}, ${pos})
                          returning id` as unknown as Riga[];
-      await tx`update public.beni set zite_bene_id = id::text where id = ${riga!.id}`;
+      await tx`update public.assets set zite_bene_id = id::text where id = ${riga!.id}`;
       if (pratica) {
         // the same rule as the invoice import: a placeholder with no invoices is put aside once a managed good exists
-        await tx`update public.beni be set removed_at = now()
-                  where be.pratica_id = ${pratica} and be.zite_bene_id is null and be.removed_at is null
-                    and not exists (select 1 from public.supplier_invoice_allocations a where a.bene_id = be.id)`;
+        await tx`update public.assets be set removed_at = now()
+                  where be.case_id = ${pratica} and be.zite_bene_id is null and be.removed_at is null
+                    and not exists (select 1 from public.supplier_invoice_allocations a where a.asset_id = be.id)`;
       }
     } else {
-      [riga] = await tx`update public.beni set
+      [riga] = await tx`update public.assets set
                            name = coalesce(${name === undefined ? null : name ?? ""}, name),
                            supplier_hint = case when ${supplier === undefined} then supplier_hint else ${supplier ?? null} end,
                            order_date = case when ${orderDate === undefined} then order_date else ${orderDate ?? null}::date end,
@@ -174,7 +174,7 @@ async function salva(p: Record<string, unknown>) {
                          where id = ${id} and removed_at is null returning id` as unknown as Riga[];
       if (!riga) throw new BeniError(404, "bene_not_found");
     }
-    const [r] = await tx`select ${COLONNE(tx)} from public.beni b where b.id = ${riga!.id}`;
+    const [r] = await tx`select ${COLONNE(tx)} from public.assets b where b.id = ${riga!.id}`;
     return { bene: (await conValori(tx, [r as unknown as Riga]))[0] };
   });
 }
@@ -182,24 +182,24 @@ async function salva(p: Record<string, unknown>) {
 async function togli(p: Record<string, unknown>) {
   const id = oneUuid(p.id, "id");
   return await comeCollega(p, async (tx) => {
-    const [{ n }] = await tx`select count(*)::int as n from public.supplier_invoice_allocations where bene_id = ${id}`;
+    const [{ n }] = await tx`select count(*)::int as n from public.supplier_invoice_allocations where asset_id = ${id}`;
     if (n > 0) throw new BeniError(409, "bene_con_fatture");
-    const r = await tx`update public.beni set removed_at = now() where id = ${id} and removed_at is null returning id`;
+    const r = await tx`update public.assets set removed_at = now() where id = ${id} and removed_at is null returning id`;
     if (!r.length) throw new BeniError(404, "bene_not_found");
     return { ok: true };
   });
 }
 
 async function valore(p: Record<string, unknown>) {
-  const bene = oneUuid(p.bene_id, "bene_id");
-  const dato = ziteId(p.dato_id, "dato_id");
+  const bene = oneUuid(p.asset_id, "asset_id");
+  const dato = ziteId(p.data_request_id, "data_request_id");
   const value = optText(p.value, "value", 20000) ?? null;
   return await comeCollega(p, async (tx) => {
-    const [b] = await tx`select id from public.beni where id = ${bene} and removed_at is null`;
+    const [b] = await tx`select id from public.assets where id = ${bene} and removed_at is null`;
     if (!b) throw new BeniError(404, "bene_not_found");
-    if (value === null) await tx`delete from public.bene_values where bene_id = ${bene} and dato_id = ${dato}`;
-    else await tx`insert into public.bene_values (bene_id, dato_id, value) values (${bene}, ${dato}, ${value})
-                  on conflict (bene_id, dato_id) do update set value = excluded.value`;
+    if (value === null) await tx`delete from public.asset_values where asset_id = ${bene} and data_request_id = ${dato}`;
+    else await tx`insert into public.asset_values (asset_id, data_request_id, value) values (${bene}, ${dato}, ${value})
+                  on conflict (asset_id, data_request_id) do update set value = excluded.value`;
     return { ok: true };
   });
 }
@@ -207,18 +207,18 @@ async function valore(p: Record<string, unknown>) {
 async function dettaglio(p: Record<string, unknown>) {
   const id = oneUuid(p.id, "id");
   return await comeCollega(p, async (tx) => {
-    const [r] = await tx`select ${COLONNE(tx)} from public.beni b where b.id = ${id} and b.removed_at is null`;
+    const [r] = await tx`select ${COLONNE(tx)} from public.assets b where b.id = ${id} and b.removed_at is null`;
     if (!r) throw new BeniError(404, "bene_not_found");
     const righe = await tx`select invoice_id, supplier_name, number, to_char(issue_date, 'YYYY-MM-DD') as issue_date, doc_type, description,
                                   to_char(period_from, 'YYYY-MM-DD') as period_from, to_char(period_to, 'YYYY-MM-DD') as period_to, share_pct::text, amount::text
-                             from public.supplier_invoice_by_bene where bene_id = ${id} order by issue_date, number, position`;
+                             from public.supplier_invoice_by_asset where asset_id = ${id} order by issue_date, number, position`;
     return { bene: (await conValori(tx, [r as unknown as Riga]))[0], righe };
   });
 }
 
 async function documento(p: Record<string, unknown>) {
-  const bene = oneUuid(p.bene_id, "bene_id");
-  const dato = ziteId(p.dato_id, "dato_id");
+  const bene = oneUuid(p.asset_id, "asset_id");
+  const dato = ziteId(p.data_request_id, "data_request_id");
   const name = optText(p.name, "name", 255);
   if (!name) throw new BeniError(400, "invalid_name");
   const driveFile = p.drive_file_id == null ? null : (typeof p.drive_file_id === "string" && DRIVE_ID.test(p.drive_file_id) ? p.drive_file_id : null);
@@ -229,9 +229,9 @@ async function documento(p: Record<string, unknown>) {
   const validUntil = optText(p.valid_until, "valid_until", 10) ?? null;
   if (validUntil && !DAY.test(validUntil)) throw new BeniError(400, "invalid_valid_until");
   return await comeCollega(p, async (tx) => {
-    const [b] = await tx`select id from public.beni where id = ${bene} and removed_at is null`;
+    const [b] = await tx`select id from public.assets where id = ${bene} and removed_at is null`;
     if (!b) throw new BeniError(404, "bene_not_found");
-    const [d] = await tx`insert into public.bene_documents (bene_id, dato_id, name, drive_file_id, link, valid_until)
+    const [d] = await tx`insert into public.asset_documents (asset_id, data_request_id, name, drive_file_id, link, valid_until)
                           values (${bene}, ${dato}, ${name}, ${driveFile}, ${link}, ${validUntil}) returning id`;
     return { ok: true, id: d.id };
   });
@@ -240,17 +240,17 @@ async function documento(p: Record<string, unknown>) {
 async function togliDocumento(p: Record<string, unknown>) {
   const id = oneUuid(p.id, "id");
   return await comeCollega(p, async (tx) => {
-    const r = await tx`update public.bene_documents set removed_at = now() where id = ${id} and removed_at is null returning id`;
+    const r = await tx`update public.asset_documents set removed_at = now() where id = ${id} and removed_at is null returning id`;
     if (!r.length) throw new BeniError(404, "document_not_found");
     return { ok: true };
   });
 }
 
 async function cartella(p: Record<string, unknown>) {
-  const bene = oneUuid(p.bene_id, "bene_id");
+  const bene = oneUuid(p.asset_id, "asset_id");
   if (typeof p.drive_folder !== "string" || !DRIVE_ID.test(p.drive_folder)) throw new BeniError(400, "invalid_drive_folder");
   return await comeCollega(p, async (tx) => {
-    const r = await tx`update public.beni set drive_folder = ${p.drive_folder as string} where id = ${bene} and removed_at is null returning id`;
+    const r = await tx`update public.assets set drive_folder = ${p.drive_folder as string} where id = ${bene} and removed_at is null returning id`;
     if (!r.length) throw new BeniError(404, "bene_not_found");
     return { ok: true };
   });
