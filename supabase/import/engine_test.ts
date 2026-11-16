@@ -87,6 +87,13 @@ Deno.test("more than one link on a to-one key is counted", async () => {
   assert.equal(r.steps[2].multipleLinks, 1);
 });
 
+Deno.test("the same link repeated is one link, not a conflict", async () => {
+  const dup = source({ Aziende__Contatti: [{ contattiId: "c1", aziendeId: "a1" }, { contattiId: "c1", aziendeId: "a1" }, { contattiId: "c2", aziendeId: "a2" }, { contattiId: "c3", aziendeId: "a2" }] });
+  const r = await runImport(steps, dup, new MemorySink());
+  assert.equal(r.ok, true, r.problems.join());
+  assert.equal(r.steps[2].multipleLinks, 0);
+});
+
 Deno.test("csv: quotes, commas, new lines inside a cell, empty cell is null", () => {
   const rows = parseCsv('id,name,note\r\nr1,"Rossi, Mario","line1\nline2"\nr2,"say ""hi""",\n');
   assert.deepEqual(rows, [{ id: "r1", name: "Rossi, Mario", note: "line1\nline2" }, { id: "r2", name: 'say "hi"', note: null }]);
