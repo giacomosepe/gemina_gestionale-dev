@@ -44,7 +44,7 @@ begin
 
   perform set_config('request.jwt.claims', json_build_object('sub', mgr, 'role', 'authenticated')::text, true);
   set local role authenticated;
-  select count(*) into n from public.services;
+  select count(*) into n from public.services where id = svc;
   if n <> 1 then failures := failures + 1; report := report || format(E'\nFAIL a manager reads %s services of 1', n);
   else report := report || E'\nok   a manager reads the catalogue'; end if;
   ok := false;

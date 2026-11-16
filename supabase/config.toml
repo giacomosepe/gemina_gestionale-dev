@@ -42,3 +42,6 @@ verify_jwt = false
 
 [functions.ping]
 verify_jwt = false
+
+[functions.catalogo]
+verify_jwt = false
