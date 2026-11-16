@@ -29,13 +29,13 @@
 // bridge); optional URL_PORTALE, URL_GESTIONALE.
 
 import postgres from "npm:postgres@3.4.5";
+import { parseAllowlist, recipientAllowed } from "./guard.ts";
 
 const DB_URL = Deno.env.get("SUPABASE_DB_URL")!;
 // The dev project holds the key as RESEND_SUPABASE_KEY (set 21 Oct); production uses RESEND_API_KEY (checklist).
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? Deno.env.get("RESEND_SUPABASE_KEY") ?? "";
 const PARTNER_EMAILS_REAL = Deno.env.get("PARTNER_EMAILS_REAL") === "true";
-const DEV_TEST_PARTNER_EMAILS = new Set((Deno.env.get("DEV_TEST_PARTNER_EMAILS") ?? "")
-  .split(",").map((e) => e.trim().toLowerCase()).filter(Boolean));
+const DEV_TEST_PARTNER_EMAILS = parseAllowlist(Deno.env.get("DEV_TEST_PARTNER_EMAILS"));
 const URL_PORTALE = (Deno.env.get("URL_PORTALE") ?? "https://partners.geminaadvisory.com").replace(/\/+$/, "");
 const URL_GESTIONALE = (Deno.env.get("URL_GESTIONALE") ?? "https://gestionale.geminaadvisory.com").replace(/\/+$/, "");
 
@@ -95,12 +95,12 @@ function text(e: Email): string {
 // Last line of defence, for EVERY recipient (referrers and the team): outside production (PARTNER_EMAILS_REAL not "true") an email goes only to an
 // address on DEV_TEST_PARTNER_EMAILS; anything else is dropped and logged. Staging holds a copy of the real data (CLAUDE.md rule 6), so this must not
 // depend on which code path built the message. It answers true so that the caller does not retry the same message at every run.
-function recipientAllowed(to: string): boolean {
-  return PARTNER_EMAILS_REAL || DEV_TEST_PARTNER_EMAILS.has(to.toLowerCase());
+function recipientAllowedHere(to: string): boolean {
+  return recipientAllowed(to, PARTNER_EMAILS_REAL, DEV_TEST_PARTNER_EMAILS);
 }
 
 async function send(m: { from: string; to: string; replyTo?: string; subject: string; email: Email }): Promise<boolean> {
-  if (!recipientAllowed(m.to)) {
+  if (!recipientAllowedHere(m.to)) {
     console.warn("email blocked: recipient is not on DEV_TEST_PARTNER_EMAILS and this project is not live");
     return true;
   }
