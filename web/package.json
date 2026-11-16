@@ -5,19 +5,24 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "build": "tsc --noEmit && eslint src && vite build",
+    "preview": "vite preview",
+    "lint": "eslint src"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.119.0",
+    "@tanstack/react-query": "5.107.1",
     "react": "18.3.1",
-    "react-dom": "18.3.1"
+    "react-dom": "18.3.1",
+    "react-router-dom": "7.18.5"
   },
   "devDependencies": {
     "@types/react": "18.3.12",
     "@types/react-dom": "18.3.1",
     "@vitejs/plugin-react": "4.3.4",
+    "eslint": "9.39.1",
     "typescript": "5.6.3",
+    "typescript-eslint": "8.72.2",
     "vite": "5.4.11"
   }
 }

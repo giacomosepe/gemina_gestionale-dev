@@ -1,36 +1,38 @@
-// The shell for now: login, then a page that says who you are. The real app replaces it (PM-147).
-import { LoginPage } from "./auth/LoginPage";
-import { SessionProvider, useSession } from "./auth/SessionProvider";
-import { isConfigured, supabase, supabaseUrl } from "./auth/supabase";
-import { useWhoAmI } from "./auth/useWhoAmI";
+// Routes (real URLs) and providers. New screens are added as routes under RequireSession.
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { RequireSession } from "./app/layouts/RequireSession";
+import { SessionProvider, useSession } from "./features/auth/hooks/SessionProvider";
+import { HomePage } from "./features/auth/pages/HomePage";
+import { LoginPage } from "./features/auth/pages/LoginPage";
+import { isConfigured } from "./shared/api/supabase";
+import { pageStyle } from "./ui/styles";
 
-const page = { fontFamily: "system-ui, sans-serif", maxWidth: 520, margin: "18vh auto", padding: "0 16px" } as const;
+const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 60_000, refetchOnWindowFocus: false } } });
 
-function Home() {
-  const { session } = useSession();
-  const who = useWhoAmI();
-  return (
-    <main style={page}>
-      <h1>Geminup</h1>
-      <p>Ciao {session?.user.email}.</p>
-      {who.state === "loading" && <p>Controllo il tuo accesso…</p>}
-      {who.state === "ok" && <p>Accesso confermato{who.staffRole ? `: ${who.staffRole}` : ""}.</p>}
-      {who.state === "refused" && <p role="alert">{who.message}</p>}
-      <button onClick={() => supabase.auth.signOut()}>Esci</button>
-      <p style={{ color: "#666", fontSize: 14 }}>In costruzione. Ambiente: {supabaseUrl?.replace("https://", "").split(".")[0]}</p>
-    </main>
-  );
-}
-
-function Gate() {
+function LoginRoute() {
   const { session, loading } = useSession();
-  if (loading) return <main style={page}><p>Caricamento…</p></main>;
-  return session ? <Home /> : <LoginPage />;
+  if (loading) return <main style={pageStyle}><p>Caricamento…</p></main>;
+  return session ? <Navigate to="/" replace /> : <LoginPage />;
 }
 
 export function App() {
   if (!isConfigured) {
-    return <main style={page}><h1>Geminup</h1><p>In costruzione.</p><p style={{ color: "#666", fontSize: 14 }}>Nessun database collegato.</p></main>;
+    return <main style={pageStyle}><h1>Geminup</h1><p>In costruzione.</p><p style={{ color: "#666", fontSize: 14 }}>Nessun database collegato.</p></main>;
   }
-  return <SessionProvider><Gate /></SessionProvider>;
+  return (
+    <QueryClientProvider client={queryClient}>
+      <SessionProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={<LoginRoute />} />
+            <Route element={<RequireSession />}>
+              <Route path="/" element={<HomePage />} />
+            </Route>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </BrowserRouter>
+      </SessionProvider>
+    </QueryClientProvider>
+  );
 }
