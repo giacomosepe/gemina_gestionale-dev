@@ -84,4 +84,4 @@ jobs:
           url="$(cat supabase/.temp/pooler-url)"
           case "$url" in *sslmode=*) ;; *\?*) url="$url&sslmode=require" ;; *) url="$url?sslmode=require" ;; esac
           export TEST_DB_URL="$url"
-          deno test --node-modules-dir=none --allow-net --allow-env supabase/functions/_shared/*_integration_test.ts
+          deno test --node-modules-dir=none --allow-net --allow-env supabase/functions/_shared/*_integration_test.ts supabase/import/*_integration_test.ts
