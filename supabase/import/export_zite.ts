@@ -52,8 +52,14 @@ if (import.meta.main) {
   const { values } = parseArgs({ options: { database: { type: "string" }, out: { type: "string" } } });
   const key = Deno.env.get("ZITE_API_KEY");
   if (!values.database || !values.out || !key) { console.error("usage: see the header (--database, --out and ZITE_API_KEY are required)"); Deno.exit(2); }
-  const repoRoot = resolve(import.meta.dirname!, "..", "..");
-  if ((resolve(values.out) + sep).startsWith(repoRoot + sep)) { console.error("refused: the output folder is inside the repository; real data must stay outside it"); Deno.exit(2); }
+  // Refuse an output folder inside a git repository: look for a .git folder from the output folder upwards.
+  const insideRepo = async (dir: string): Promise<boolean> => {
+    for (let d = resolve(dir); ; d = resolve(d, "..")) {
+      try { await Deno.stat(`${d}${sep}.git`); return true; } catch { /* not here */ }
+      if (resolve(d, "..") === d) return false;
+    }
+  };
+  if (await insideRepo(values.out)) { console.error("refused: the output folder is inside the repository; real data must stay outside it"); Deno.exit(2); }
   await Deno.mkdir(values.out, { recursive: true });
   const counts = await exportAll(fetch, key, values.database, (name, rows) => {
     if (name.includes("/") || name.includes("..")) throw new Error(`bad table name: ${name}`);
