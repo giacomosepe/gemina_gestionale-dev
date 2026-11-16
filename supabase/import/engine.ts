@@ -38,7 +38,8 @@ export async function runImport(steps: Step[], source: Source, sink: Sink, newId
       for (const l of await source.read(f.linkTable)) {
         const from = str(l[f.fromColumn]), to = str(l[f.toColumn]);
         if (!from || !to) continue;
-        byFrom.set(from, [...(byFrom.get(from) ?? []), to]);
+        const known = byFrom.get(from) ?? [];
+        if (!known.includes(to)) byFrom.set(from, [...known, to]);   // Zite can hold the same link twice; it counts once
       }
       fkLinks.set(i, byFrom);
     }
