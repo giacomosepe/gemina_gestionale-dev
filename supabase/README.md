@@ -214,3 +214,9 @@ Loads a Zite export into a target project, in dependency order, in one transacti
 - Safe by design: refuses a target that is not empty; any problem (a source row lost, a link that points nowhere, a duplicate id) makes the whole run roll back and shows up in the report.
 - Run: `IMPORT_DB_URL=... PGPASSWORD=... deno run --allow-net --allow-env --allow-read --allow-write supabase/import/run.ts --export <folder> --out <folder> [--reset] [--dry-run]`. `--reset` empties the step tables and only runs if the URL contains the ref in `IMPORT_RESET_ALLOWED_REF` (staging).
 - Tests: `supabase/import/*_test.ts` (made-up data only; the Postgres one runs in the staging workflow).
+
+### Getting the export: `export_zite.ts`
+
+Zite's own export is CSV, one table at a time, without the relationships. This script reads every table and every link table through the Zite API and writes one `<name>.json` each, in the layout the runner reads. Create a key in Zite > Settings > Developer, then:
+
+`ZITE_API_KEY=... deno run --allow-net=tables.zite.com --allow-env=ZITE_API_KEY --allow-write supabase/import/export_zite.ts --database 7913c9ea7f382a11 --out ~/gemina-export` (the folder must be outside the repo). It only reads. Revoke the key afterwards.
