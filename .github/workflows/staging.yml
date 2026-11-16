@@ -38,7 +38,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 3.1.0  # pinned: "latest" needs a GitHub API lookup that gets rate limited
       - name: Link the staging project
         run: |
           test -n "$PROJECT_REF" || { echo "SUPABASE_PROJECT_REF is not set"; exit 1; }
