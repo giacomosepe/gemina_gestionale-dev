@@ -1,6 +1,6 @@
 // Staff login: an email link or Google. Invite-only: Supabase refuses everyone who was not invited, so the page never says whether an address exists.
 import { type FormEvent, useState } from "react";
-import { supabase } from "./supabase";
+import { sendSignInLink, signInWithGoogle } from "../hooks/authActions";
 
 type Status = { kind: "idle" } | { kind: "sending" } | { kind: "sent" } | { kind: "error"; message: string };
 
@@ -12,13 +12,13 @@ export function LoginPage() {
   async function sendLink(e: FormEvent) {
     e.preventDefault();
     setStatus({ kind: "sending" });
-    const { error } = await supabase.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: false, emailRedirectTo: redirectTo } });
+    const error = await sendSignInLink(email.trim(), redirectTo);
     // An address that was not invited gets an error from Supabase; the person sees the same message either way.
     setStatus(error && error.status !== 400 && error.status !== 422 ? { kind: "error", message: "Non è stato possibile inviare il link. Riprova tra poco." } : { kind: "sent" });
   }
 
   async function google() {
-    const { error } = await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo } });
+    const error = await signInWithGoogle(redirectTo);
     if (error) setStatus({ kind: "error", message: "L'accesso con Google non è disponibile." });
   }
 
