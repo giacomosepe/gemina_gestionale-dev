@@ -16,6 +16,6 @@ jobs:
         with:
           deno-version: v2.x
       - name: Type check the shared base and the sample function
-        run: deno check --node-modules-dir=none supabase/functions/_shared supabase/functions/message-emails/*.ts supabase/functions/ping/index.ts supabase/import/*.ts
+        run: deno check --node-modules-dir=none supabase/functions/_shared supabase/functions/message-emails/*.ts supabase/functions/ping/index.ts supabase/functions/catalogo/*.ts supabase/import/*.ts
       - name: Unit tests
-        run: deno test --node-modules-dir=none --allow-env=TEST_DB_URL supabase/functions/_shared supabase/functions/message-emails supabase/import
+        run: deno test --node-modules-dir=none --allow-env=TEST_DB_URL supabase/functions/_shared supabase/functions/message-emails supabase/functions/catalogo supabase/import
