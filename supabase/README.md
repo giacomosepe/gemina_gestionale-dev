@@ -219,4 +219,4 @@ Loads a Zite export into a target project, in dependency order, in one transacti
 
 Zite's own export is CSV, one table at a time, without the relationships. This script reads every table and every link table through the Zite API and writes one `<name>.json` each, in the layout the runner reads. Create a key in Zite > Settings > Developer, then:
 
-`ZITE_API_KEY=... deno run --allow-net=tables.zite.com --allow-env=ZITE_API_KEY --allow-write supabase/import/export_zite.ts --database 7913c9ea7f382a11 --out ~/gemina-export` (the folder must be outside the repo). It only reads. Revoke the key afterwards.
+`ZITE_API_KEY=... deno run --allow-net=tables.zite.com --allow-env=ZITE_API_KEY --allow-read --allow-write supabase/import/export_zite.ts --database 7913c9ea7f382a11 --out ~/gemina-export` (the folder must be outside the repo). It only reads. Revoke the key afterwards.

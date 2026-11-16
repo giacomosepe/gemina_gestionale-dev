@@ -1,5 +1,5 @@
 // Pulls every table and link table of the Zite database into one JSON file each, in the layout the import runner reads (source.ts).
-//   ZITE_API_KEY=... deno run --allow-net=tables.zite.com --allow-env=ZITE_API_KEY --allow-write supabase/import/export_zite.ts --database <id> --out <folder>
+//   ZITE_API_KEY=... deno run --allow-net=tables.zite.com --allow-env=ZITE_API_KEY --allow-read --allow-write supabase/import/export_zite.ts --database <id> --out <folder>
 // The key comes from Zite > Settings > Developer. The folder must be OUTSIDE this repo (real data, CLAUDE.md rule 6). Read-only: only GET schema and SELECT queries.
 import { parseArgs } from "node:util";
 import { resolve, sep } from "node:path";
@@ -55,7 +55,7 @@ if (import.meta.main) {
   // Refuse an output folder inside a git repository: look for a .git folder from the output folder upwards.
   const insideRepo = async (dir: string): Promise<boolean> => {
     for (let d = resolve(dir); ; d = resolve(d, "..")) {
-      try { await Deno.stat(`${d}${sep}.git`); return true; } catch { /* not here */ }
+      try { await Deno.stat(`${d}${sep}.git`); return true; } catch (e) { if (!(e instanceof Deno.errors.NotFound)) throw e; }
       if (resolve(d, "..") === d) return false;
     }
   };
