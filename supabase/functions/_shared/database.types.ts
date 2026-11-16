@@ -10,7 +10,45 @@ export type Database = {
   }
   "public": {
           Tables: {
-            "asset_documents": {
+            "activity_templates": {
+                  Row: {
+                    "active": boolean,"category_id": string | null,"created_at": string,"days": number | null,"description": string | null,"id": string,"kind": string | null,"legacy_id": string | null,"milestone_id": string | null,"organization_id": string,"owner": string | null,"position": number,"service_id": string | null,"title": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "active"?: boolean,"category_id"?: string | null,"created_at"?: string,"days"?: number | null,"description"?: string | null,"id"?: string,"kind"?: string | null,"legacy_id"?: string | null,"milestone_id"?: string | null,"organization_id"?: string,"owner"?: string | null,"position"?: number,"service_id"?: string | null,"title": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "active"?: boolean,"category_id"?: string | null,"created_at"?: string,"days"?: number | null,"description"?: string | null,"id"?: string,"kind"?: string | null,"legacy_id"?: string | null,"milestone_id"?: string | null,"organization_id"?: string,"owner"?: string | null,"position"?: number,"service_id"?: string | null,"title"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "activity_templates_category_id_fkey"
+      columns: ["category_id"]
+isOneToOne: false
+      referencedRelation: "service_categories"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "activity_templates_milestone_id_fkey"
+      columns: ["milestone_id"]
+isOneToOne: false
+      referencedRelation: "milestones"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "activity_templates_organization_id_fkey"
+      columns: ["organization_id"]
+isOneToOne: false
+      referencedRelation: "organizations"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "activity_templates_service_id_fkey"
+      columns: ["service_id"]
+isOneToOne: false
+      referencedRelation: "services"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"asset_documents": {
                   Row: {
                     "asset_id": string,"created_at": string,"created_by": string | null,"data_request_id": string,"drive_file_id": string | null,"id": string,"link": string | null,"name": string,"organization_id": string,"removed_at": string | null,"updated_at": string,"valid_until": string | null
                   }
@@ -490,6 +528,26 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"data_requests": {
+                  Row: {
+                    "archived": boolean,"created_at": string,"data_type": string | null,"feeds": string | null,"help": string | null,"id": string,"legacy_id": string | null,"legacy_target_column": string | null,"lifetime": string | null,"local_only": boolean,"local_owner": string | null,"name": string,"options": string | null,"organization_id": string,"required_by_default": boolean,"save_on_asset": boolean,"save_on_case": boolean,"save_on_company": boolean,"save_on_contact": boolean,"save_on_deal": boolean,"section": string | null,"signatures_required": number | null,"signers": string | null,"updated_at": string,"validity": string | null,"validity_months": number | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "archived"?: boolean,"created_at"?: string,"data_type"?: string | null,"feeds"?: string | null,"help"?: string | null,"id"?: string,"legacy_id"?: string | null,"legacy_target_column"?: string | null,"lifetime"?: string | null,"local_only"?: boolean,"local_owner"?: string | null,"name": string,"options"?: string | null,"organization_id"?: string,"required_by_default"?: boolean,"save_on_asset"?: boolean,"save_on_case"?: boolean,"save_on_company"?: boolean,"save_on_contact"?: boolean,"save_on_deal"?: boolean,"section"?: string | null,"signatures_required"?: number | null,"signers"?: string | null,"updated_at"?: string,"validity"?: string | null,"validity_months"?: number | null
+                  }
+                  Update: {
+                    "archived"?: boolean,"created_at"?: string,"data_type"?: string | null,"feeds"?: string | null,"help"?: string | null,"id"?: string,"legacy_id"?: string | null,"legacy_target_column"?: string | null,"lifetime"?: string | null,"local_only"?: boolean,"local_owner"?: string | null,"name"?: string,"options"?: string | null,"organization_id"?: string,"required_by_default"?: boolean,"save_on_asset"?: boolean,"save_on_case"?: boolean,"save_on_company"?: boolean,"save_on_contact"?: boolean,"save_on_deal"?: boolean,"section"?: string | null,"signatures_required"?: number | null,"signers"?: string | null,"updated_at"?: string,"validity"?: string | null,"validity_months"?: number | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "data_requests_organization_id_fkey"
+      columns: ["organization_id"]
+isOneToOne: false
+      referencedRelation: "organizations"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"deadlines": {
                   Row: {
                     "archived": boolean,"case_id": string,"created_at": string,"created_by": string | null,"delivered_on": string | null,"drive_folder": string | null,"due_on": string | null,"id": string,"name": string,"number": number,"organization_id": string,"receipt": string | null,"sort_order": number,"type": string,"updated_at": string
@@ -584,6 +642,26 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"lookup_options": {
+                  Row: {
+                    "active": boolean,"created_at": string,"id": string,"kind": string,"label": string,"legacy_id": string | null,"organization_id": string,"position": number,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "active"?: boolean,"created_at"?: string,"id"?: string,"kind": string,"label": string,"legacy_id"?: string | null,"organization_id"?: string,"position"?: number,"updated_at"?: string
+                  }
+                  Update: {
+                    "active"?: boolean,"created_at"?: string,"id"?: string,"kind"?: string,"label"?: string,"legacy_id"?: string | null,"organization_id"?: string,"position"?: number,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "lookup_options_organization_id_fkey"
+      columns: ["organization_id"]
+isOneToOne: false
+      referencedRelation: "organizations"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"messages": {
                   Row: {
                     "automatic": boolean,"body": string,"conversation_id": string,"created_at": string,"deleted_at": string | null,"id": string,"internal": boolean,"organization_id": string,"sender_id": string | null,"zite_messaggio_id": string | null
@@ -613,6 +691,32 @@ isOneToOne: false
       columns: ["sender_id"]
 isOneToOne: false
       referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"milestones": {
+                  Row: {
+                    "active": boolean,"category_id": string | null,"created_at": string,"days": number | null,"id": string,"legacy_id": string | null,"name": string,"organization_id": string,"position": number,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "active"?: boolean,"category_id"?: string | null,"created_at"?: string,"days"?: number | null,"id"?: string,"legacy_id"?: string | null,"name": string,"organization_id"?: string,"position"?: number,"updated_at"?: string
+                  }
+                  Update: {
+                    "active"?: boolean,"category_id"?: string | null,"created_at"?: string,"days"?: number | null,"id"?: string,"legacy_id"?: string | null,"name"?: string,"organization_id"?: string,"position"?: number,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "milestones_category_id_fkey"
+      columns: ["category_id"]
+isOneToOne: false
+      referencedRelation: "service_categories"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "milestones_organization_id_fkey"
+      columns: ["organization_id"]
+isOneToOne: false
+      referencedRelation: "organizations"
       referencedColumns: ["id"]
     }
                   ]
@@ -946,6 +1050,90 @@ isOneToOne: false
       referencedColumns: ["key"]
     }
                   ]
+                },"service_categories": {
+                  Row: {
+                    "active": boolean,"created_at": string,"deadline_templates": Json | null,"id": string,"legacy_active_activities": Json | null,"legacy_active_milestones": Json | null,"legacy_id": string | null,"macro_category": string | null,"name": string,"organization_id": string,"output_template": Json | null,"position": number,"required_documents": string | null,"standard_terms": string | null,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "active"?: boolean,"created_at"?: string,"deadline_templates"?: Json | null,"id"?: string,"legacy_active_activities"?: Json | null,"legacy_active_milestones"?: Json | null,"legacy_id"?: string | null,"macro_category"?: string | null,"name": string,"organization_id"?: string,"output_template"?: Json | null,"position"?: number,"required_documents"?: string | null,"standard_terms"?: string | null,"updated_at"?: string
+                  }
+                  Update: {
+                    "active"?: boolean,"created_at"?: string,"deadline_templates"?: Json | null,"id"?: string,"legacy_active_activities"?: Json | null,"legacy_active_milestones"?: Json | null,"legacy_id"?: string | null,"macro_category"?: string | null,"name"?: string,"organization_id"?: string,"output_template"?: Json | null,"position"?: number,"required_documents"?: string | null,"standard_terms"?: string | null,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "service_categories_organization_id_fkey"
+      columns: ["organization_id"]
+isOneToOne: false
+      referencedRelation: "organizations"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"service_fields": {
+                  Row: {
+                    "active": boolean,"asked_in_deadlines": Json | null,"category_id": string | null,"created_at": string,"data_request_id": string | null,"feeds": string | null,"field_type": string | null,"help": string | null,"id": string,"initial_value": string | null,"label": string,"legacy_id": string | null,"options": string | null,"organization_id": string,"per_deadline": boolean | null,"position": number,"required": boolean,"required_on_case": string | null,"required_on_deal": string | null,"service_id": string | null,"shown_in_deadlines": Json | null,"template": string | null,"template_on_every_case": boolean | null,"template_version": string | null,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "active"?: boolean,"asked_in_deadlines"?: Json | null,"category_id"?: string | null,"created_at"?: string,"data_request_id"?: string | null,"feeds"?: string | null,"field_type"?: string | null,"help"?: string | null,"id"?: string,"initial_value"?: string | null,"label": string,"legacy_id"?: string | null,"options"?: string | null,"organization_id"?: string,"per_deadline"?: boolean | null,"position"?: number,"required"?: boolean,"required_on_case"?: string | null,"required_on_deal"?: string | null,"service_id"?: string | null,"shown_in_deadlines"?: Json | null,"template"?: string | null,"template_on_every_case"?: boolean | null,"template_version"?: string | null,"updated_at"?: string
+                  }
+                  Update: {
+                    "active"?: boolean,"asked_in_deadlines"?: Json | null,"category_id"?: string | null,"created_at"?: string,"data_request_id"?: string | null,"feeds"?: string | null,"field_type"?: string | null,"help"?: string | null,"id"?: string,"initial_value"?: string | null,"label"?: string,"legacy_id"?: string | null,"options"?: string | null,"organization_id"?: string,"per_deadline"?: boolean | null,"position"?: number,"required"?: boolean,"required_on_case"?: string | null,"required_on_deal"?: string | null,"service_id"?: string | null,"shown_in_deadlines"?: Json | null,"template"?: string | null,"template_on_every_case"?: boolean | null,"template_version"?: string | null,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "service_fields_category_id_fkey"
+      columns: ["category_id"]
+isOneToOne: false
+      referencedRelation: "service_categories"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "service_fields_data_request_id_fkey"
+      columns: ["data_request_id"]
+isOneToOne: false
+      referencedRelation: "data_requests"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "service_fields_organization_id_fkey"
+      columns: ["organization_id"]
+isOneToOne: false
+      referencedRelation: "organizations"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "service_fields_service_id_fkey"
+      columns: ["service_id"]
+isOneToOne: false
+      referencedRelation: "services"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"services": {
+                  Row: {
+                    "active": boolean,"aid_regime": string | null,"allowed_regions": (string)[],"allowed_sizes": (string)[],"authority": string | null,"beneficiaries": (string)[],"benefit_types": (string)[],"budget_cents": number | null,"call_document_url": string | null,"cases_to_check": string | null,"category_id": string | null,"closes_on": string | null,"created_at": string,"deadline_templates": Json | null,"excluded_ateco": string | null,"funded_expenses": (string)[],"id": string,"included_ateco": string | null,"info_url": string | null,"kind": string | null,"legacy_active_activities": Json | null,"legacy_active_milestones": Json | null,"legacy_id": string | null,"lines": string | null,"managing_body": string | null,"max_contribution_cents": number | null,"max_expense_cents": number | null,"max_intensity_pct": number | null,"min_company_age_months": number | null,"min_expense_cents": number | null,"name": string,"notes": string | null,"opens_on": string | null,"organization_id": string,"original_folders": string | null,"position": number,"procedure": string | null,"required_documents": string | null,"resources": string | null,"reviewed": boolean,"reviewed_on": string | null,"short_name": string | null,"special_requirements": (string)[],"standard_terms": string | null,"status": string | null,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "active"?: boolean,"aid_regime"?: string | null,"allowed_regions"?: (string)[],"allowed_sizes"?: (string)[],"authority"?: string | null,"beneficiaries"?: (string)[],"benefit_types"?: (string)[],"budget_cents"?: number | null,"call_document_url"?: string | null,"cases_to_check"?: string | null,"category_id"?: string | null,"closes_on"?: string | null,"created_at"?: string,"deadline_templates"?: Json | null,"excluded_ateco"?: string | null,"funded_expenses"?: (string)[],"id"?: string,"included_ateco"?: string | null,"info_url"?: string | null,"kind"?: string | null,"legacy_active_activities"?: Json | null,"legacy_active_milestones"?: Json | null,"legacy_id"?: string | null,"lines"?: string | null,"managing_body"?: string | null,"max_contribution_cents"?: number | null,"max_expense_cents"?: number | null,"max_intensity_pct"?: number | null,"min_company_age_months"?: number | null,"min_expense_cents"?: number | null,"name": string,"notes"?: string | null,"opens_on"?: string | null,"organization_id"?: string,"original_folders"?: string | null,"position"?: number,"procedure"?: string | null,"required_documents"?: string | null,"resources"?: string | null,"reviewed"?: boolean,"reviewed_on"?: string | null,"short_name"?: string | null,"special_requirements"?: (string)[],"standard_terms"?: string | null,"status"?: string | null,"updated_at"?: string
+                  }
+                  Update: {
+                    "active"?: boolean,"aid_regime"?: string | null,"allowed_regions"?: (string)[],"allowed_sizes"?: (string)[],"authority"?: string | null,"beneficiaries"?: (string)[],"benefit_types"?: (string)[],"budget_cents"?: number | null,"call_document_url"?: string | null,"cases_to_check"?: string | null,"category_id"?: string | null,"closes_on"?: string | null,"created_at"?: string,"deadline_templates"?: Json | null,"excluded_ateco"?: string | null,"funded_expenses"?: (string)[],"id"?: string,"included_ateco"?: string | null,"info_url"?: string | null,"kind"?: string | null,"legacy_active_activities"?: Json | null,"legacy_active_milestones"?: Json | null,"legacy_id"?: string | null,"lines"?: string | null,"managing_body"?: string | null,"max_contribution_cents"?: number | null,"max_expense_cents"?: number | null,"max_intensity_pct"?: number | null,"min_company_age_months"?: number | null,"min_expense_cents"?: number | null,"name"?: string,"notes"?: string | null,"opens_on"?: string | null,"organization_id"?: string,"original_folders"?: string | null,"position"?: number,"procedure"?: string | null,"required_documents"?: string | null,"resources"?: string | null,"reviewed"?: boolean,"reviewed_on"?: string | null,"short_name"?: string | null,"special_requirements"?: (string)[],"standard_terms"?: string | null,"status"?: string | null,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "services_category_id_fkey"
+      columns: ["category_id"]
+isOneToOne: false
+      referencedRelation: "service_categories"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "services_organization_id_fkey"
+      columns: ["organization_id"]
+isOneToOne: false
+      referencedRelation: "organizations"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"signature_attachment_files": {
                   Row: {
                     "attachment_id": string,"created_at": string,"created_by": string | null,"drive_file_id": string,"file_name": string,"id": string,"kind": string,"organization_id": string,"sha256": string,"signatures": number,"size_bytes": number | null,"storage_path": string | null
@@ -1072,6 +1260,32 @@ isOneToOne: false
       referencedColumns: ["id"]
     },{
       foreignKeyName: "signature_events_organization_id_fkey"
+      columns: ["organization_id"]
+isOneToOne: false
+      referencedRelation: "organizations"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"standard_activities": {
+                  Row: {
+                    "active": boolean,"created_at": string,"days": number | null,"description": string | null,"id": string,"legacy_id": string | null,"milestone_id": string | null,"organization_id": string,"owner": string | null,"position": number,"title": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "active"?: boolean,"created_at"?: string,"days"?: number | null,"description"?: string | null,"id"?: string,"legacy_id"?: string | null,"milestone_id"?: string | null,"organization_id"?: string,"owner"?: string | null,"position"?: number,"title": string,"updated_at"?: string
+                  }
+                  Update: {
+                    "active"?: boolean,"created_at"?: string,"days"?: number | null,"description"?: string | null,"id"?: string,"legacy_id"?: string | null,"milestone_id"?: string | null,"organization_id"?: string,"owner"?: string | null,"position"?: number,"title"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "standard_activities_milestone_id_fkey"
+      columns: ["milestone_id"]
+isOneToOne: false
+      referencedRelation: "milestones"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "standard_activities_organization_id_fkey"
       columns: ["organization_id"]
 isOneToOne: false
       referencedRelation: "organizations"
