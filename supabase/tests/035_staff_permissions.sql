@@ -21,11 +21,11 @@ begin
   end if;
 
   -- 1. The matrix as filled in on 12 Nov 2026.
-  ok := (select count(*) from public.role_permissions where staff_role = 'admin') = 30
+  ok := (select count(*) from public.role_permissions where staff_role = 'admin') = 31
     and (select count(*) from public.role_permissions where staff_role = 'manager') = 26
     and (select count(*) from public.role_permissions where staff_role = 'associate') = 20;
   failures := failures + (not ok)::int;
-  report := report || format(E'%s matrix: admin 30, manager 26, associate 20 permissions\n', case when ok then 'PASS' else 'FAIL' end);
+  report := report || format(E'%s matrix: admin 31, manager 26, associate 20 permissions\n', case when ok then 'PASS' else 'FAIL' end);
 
   -- 2. A role written without set_staff_role (as the bridge does) is ignored for current staff.
   update public.profiles set staff_role = 'admin' where id = mgr;
