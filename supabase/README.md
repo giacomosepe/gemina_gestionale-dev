@@ -204,3 +204,13 @@ It is the structure of production on 2026-10-19, read from its catalog (producti
   `notify_document`, `mark_documents_read`, `partner_documents`, `partner_payments`, `partner_commissions`, `partner_pratica_invoiced`, `rebuild_all_commissions`, `mark_commissions_invoiced`, `mark_commissions_paid`, `invoice_pratica_options`, `link_invoice_to_pratica`, `unlink_invoice_pratica`, `link_invoice_to_company`, `correct_commission_invoice`, `unmark_commissions_paid`, `unmark_commissions_invoiced`, `set_staff_role`, plus the November ones (`assign_supplier_invoices`, `create_upload_portal`, `revoke_upload_portal`, `set_pratica_beneficiary`, `set_supplier_category`, `supplier_invoice_proposal`, `pratica_beni`) (meant to be called by signed-in users; each checks the
   caller inside).
 - Later: token hook, MFA.
+
+## Import runner (`supabase/import/`)
+
+Loads a Zite export into a target project, in dependency order, in one transaction, and writes a reconciliation report (`import-report.md` and `.json`). The export folder and the report folder must be **outside the repo** (they hold real data; the runner refuses paths inside it).
+
+- Export layout: one file per Zite table and per link table (named like `Aziende__Contatti`), `<name>.json` (array of objects) or `<name>.csv` (header row). Only `source.ts` knows the layout.
+- A domain adds its steps to `steps.ts` when its schema exists: Zite table -> new table, Zite id -> `legacy_id`, link tables -> foreign keys or junction tables.
+- Safe by design: refuses a target that is not empty; any problem (a source row lost, a link that points nowhere, a duplicate id) makes the whole run roll back and shows up in the report.
+- Run: `IMPORT_DB_URL=... PGPASSWORD=... deno run --allow-net --allow-env --allow-read --allow-write supabase/import/run.ts --export <folder> --out <folder> [--reset] [--dry-run]`. `--reset` empties the step tables and only runs if the URL contains the ref in `IMPORT_RESET_ALLOWED_REF` (staging).
+- Tests: `supabase/import/*_test.ts` (made-up data only; the Postgres one runs in the staging workflow).
