@@ -39,9 +39,13 @@ async function listCategories(c: C) {
   };
 }
 
+// Postgres sends numeric columns as strings ("15"); the screens get numbers.
+const num = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
+
 // ---- milestones
 async function listMilestones(c: C) {
-  return { milestones: await allRows(c.tx.db, "milestones", { orderBy: "position" }) };
+  const rows = await allRows(c.tx.db, "milestones", { orderBy: "position" });
+  return { milestones: rows.map((m) => ({ ...m, days: num(m.days) })) };
 }
 
 // ---- data requests
@@ -63,7 +67,7 @@ async function listDataRequests(c: C) {
         const n = cid ? categoryName.get(cid) : null;
         if (n) usedIn.add(n);
       }
-      return { ...r, uses: uses.length, used_in: [...usedIn].sort((a, b) => a.localeCompare(b, "it")) };
+      return { ...r, validity_months: num(r.validity_months), signatures_required: num(r.signatures_required), uses: uses.length, used_in: [...usedIn].sort((a, b) => a.localeCompare(b, "it")) };
     }),
   };
 }

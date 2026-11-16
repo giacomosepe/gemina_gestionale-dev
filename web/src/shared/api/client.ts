@@ -14,7 +14,7 @@ export async function callFunction<T>(fn: string, action: string, payload: Recor
     response = await fetch(`${supabaseUrl}/functions/v1/${fn}`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${session.access_token}`, apikey: publishableKeyValue },
-      body: JSON.stringify({ action, ...payload }),
+      body: JSON.stringify({ action, input: payload }),
     });
   } catch {
     throw new ApiError("network", "Il server non risponde.", 0);

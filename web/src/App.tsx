@@ -1,7 +1,12 @@
 // Routes (real URLs) and providers. New screens are added as routes under RequireSession.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { AppLayout } from "./app/layouts/AppLayout";
 import { RequireSession } from "./app/layouts/RequireSession";
+import { CategoriesPage } from "./features/catalog/pages/CategoriesPage";
+import { CategoryPage } from "./features/catalog/pages/CategoryPage";
+import { DataRequestsPage } from "./features/catalog/pages/DataRequestsPage";
+import { MilestonesPage } from "./features/catalog/pages/MilestonesPage";
 import { SessionProvider, useSession } from "./features/auth/hooks/SessionProvider";
 import { HomePage } from "./features/auth/pages/HomePage";
 import { LoginPage } from "./features/auth/pages/LoginPage";
@@ -27,7 +32,13 @@ export function App() {
           <Routes>
             <Route path="/login" element={<LoginRoute />} />
             <Route element={<RequireSession />}>
-              <Route path="/" element={<HomePage />} />
+              <Route element={<AppLayout />}>
+                <Route path="/" element={<HomePage />} />
+                <Route path="/catalogo/categorie" element={<CategoriesPage />} />
+                <Route path="/catalogo/categorie/:id" element={<CategoryPage />} />
+                <Route path="/catalogo/milestone" element={<MilestonesPage />} />
+                <Route path="/catalogo/dati" element={<DataRequestsPage />} />
+              </Route>
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
